@@ -18,7 +18,7 @@ type Action func(ctx context.Context) error
 
 var command string
 
-func parseArgs(cfg *config.Config) (Action, error) {
+func parseArgs() (Action, error) {
 	command = os.Args[0]
 
 	global := flag.NewFlagSet("yact", flag.ContinueOnError)
@@ -31,6 +31,10 @@ func parseArgs(cfg *config.Config) (Action, error) {
 		fmt.Printf("Usage: %s [global flags] <command> [command flags]\n", command)
 		fmt.Println("\nGlobal flags:")
 		global.PrintDefaults()
+		fmt.Println("\nEnvironment variables can be provided:")
+		fmt.Println("  YACT_CA_PATH - path to the CA certificate")
+		fmt.Println("  YACT_CERT_PATH - path to the TSL certificate")
+		fmt.Println("  YACT_KEY_PATH - path to the TLS certificate key")
 		fmt.Println("\nCommands:")
 		fmt.Println("  proxy    Start a proxy server")
 		fmt.Println("  client   Start a client")
@@ -38,7 +42,12 @@ func parseArgs(cfg *config.Config) (Action, error) {
 		fmt.Println("")
 	}
 
-	global.BoolVar(&cfg.Debug, "d", false, "debug output")
+	commonCfg := &config.CommonConfig{}
+
+	global.BoolVar(&commonCfg.Debug, "d", false, "debug output")
+	global.StringVar(&commonCfg.CAPath, "ca", "", "CA certificate path")
+	global.StringVar(&commonCfg.CertPath, "cert", "", "TLS certificate path")
+	global.StringVar(&commonCfg.KeyPath, "key", "", "TLS key path")
 
 	err := global.Parse(os.Args[1:])
 	if err != nil {
@@ -54,24 +63,28 @@ func parseArgs(cfg *config.Config) (Action, error) {
 	subCommand := remaining[0]
 	subCommandArgs := remaining[1:]
 
-	logger := initLogger(cfg.Debug)
+	logger := initLogger(commonCfg.Debug)
 
 	switch subCommand {
 	case "proxy":
-		return handleProxy(cfg, logger, subCommandArgs)
+		return handleProxy(commonCfg, logger, subCommandArgs)
 	case "client":
-		return handleClient(cfg, logger, subCommandArgs)
+		return handleClient(commonCfg, logger, subCommandArgs)
 	default:
 		global.Usage()
 		return nil, fmt.Errorf("unknown command: %s", subCommand)
 	}
 }
 
-func handleProxy(cfg *config.Config, logger logger.Logger, args []string) (Action, error) { //nolint:dupl
+func handleProxy(commonCfg *config.CommonConfig, logger logger.Logger, args []string) (Action, error) { //nolint:dupl
 	fs := flag.NewFlagSet("proxy", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 
-	fs.StringVar(&cfg.Addr, "addr", ":8008", "address to listen on")
+	cfg := &client.Config{
+		CommonConfig: commonCfg,
+	}
+
+	fs.StringVar(&cfg.ProxyAddr, "addr", ":8008", "address to listen on")
 
 	fs.Usage = func() {
 		fs.SetOutput(os.Stdout)
@@ -92,15 +105,21 @@ func handleProxy(cfg *config.Config, logger logger.Logger, args []string) (Actio
 	}
 
 	return Action(func(ctx context.Context) error {
-		return proxy.Run(ctx, logger, cfg.Addr)
+		return proxy.Run(ctx, logger, cfg.ProxyAddr)
 	}), nil
 }
 
-func handleClient(cfg *config.Config, logger logger.Logger, args []string) (Action, error) { //nolint:dupl
+func handleClient(commonCfg *config.CommonConfig, logger logger.Logger, args []string) (Action, error) { //nolint:dupl
 	fs := flag.NewFlagSet("client", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 
-	fs.StringVar(&cfg.Addr, "addr", ":8008", "address of proxy to connect to")
+	cfg := &proxy.Config{
+		CommonConfig: commonCfg,
+	}
+
+	fs.StringVar(&cfg.ProxyAddr, "addr", ":8008", "address of proxy to listen to")
+	fs.DurationVar(&cfg.KeepAliveInterval, "i", proxy.DefaultKeepAliveInterval, "keep-alive interval")
+	fs.DurationVar(&cfg.KeepAliveTimeout, "t", proxy.DefaultKeepAliveTimeout, "keep-alive timeout")
 
 	fs.Usage = func() {
 		fs.SetOutput(os.Stdout)
@@ -121,7 +140,7 @@ func handleClient(cfg *config.Config, logger logger.Logger, args []string) (Acti
 	}
 
 	return Action(func(ctx context.Context) error {
-		return client.Run(ctx, logger, cfg.Addr)
+		return client.Run(ctx, logger, cfg.ProxyAddr)
 	}), nil
 }
 

@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-
-	"github.com/snobb/go-yact/internal/config"
 )
 
 func main() {
@@ -18,9 +16,7 @@ func main() {
 }
 
 func run() error {
-	var cfg config.Config
-
-	action, err := parseArgs(&cfg)
+	action, err := parseArgs()
 	if err != nil {
 		return err
 	}
