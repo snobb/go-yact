@@ -1,0 +1,6 @@
+tls_config:
+  ca_path: /path/to/ca.crt
+  cert_path: /path/to/client.crt
+  key_path: /path/to/client.key
+debug: true
+proxy_addr: ":8080"

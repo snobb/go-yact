@@ -12,8 +12,9 @@ import (
 	"google.golang.org/grpc/keepalive"
 )
 
+// InitCredentials creates TLS credentials.
 func InitCredentials(caPath, certPath, keyPath string) (credentials.TransportCredentials, error) {
-	caCert, err := os.ReadFile(caPath)
+	caCert, err := os.ReadFile(caPath) // nolint:gosec
 	if err != nil {
 		return nil, err
 	}
@@ -33,6 +34,7 @@ func InitCredentials(caPath, certPath, keyPath string) (credentials.TransportCre
 	return tc, nil
 }
 
+// NewTLSCredentials creates TLS credentials.
 func NewTLSCredentials(cert tls.Certificate, caPool *x509.CertPool) credentials.TransportCredentials {
 	tlsConfig := &tls.Config{
 		Certificates: []tls.Certificate{cert},
@@ -44,16 +46,15 @@ func NewTLSCredentials(cert tls.Certificate, caPool *x509.CertPool) credentials.
 	return credentials.NewTLS(tlsConfig)
 }
 
+// NewGRPCServer creates a new gRPC server.
 func NewGRPCServer(
 	tc credentials.TransportCredentials,
 	keepAliveInterval, keepAliveTimeout time.Duration,
 ) *grpc.Server {
 	return grpc.NewServer(
 		grpc.KeepaliveParams(keepalive.ServerParameters{
-			Time:              keepAliveInterval,
-			Timeout:           keepAliveTimeout,
-			MaxConnectionIdle: MaxConnectionIdle,
-			MaxConnectionAge:  MaxConnectionAge,
+			Time:    keepAliveInterval,
+			Timeout: keepAliveTimeout,
 		}),
 		grpc.Creds(tc),
 	)

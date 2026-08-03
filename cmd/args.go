@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 
+	"github.com/kelseyhightower/envconfig"
 	"github.com/snobb/go-yact/internal/client"
 	"github.com/snobb/go-yact/internal/config"
 	"github.com/snobb/go-yact/internal/logger"
@@ -31,10 +32,6 @@ func parseArgs() (Action, error) {
 		fmt.Printf("Usage: %s [global flags] <command> [command flags]\n", command)
 		fmt.Println("\nGlobal flags:")
 		global.PrintDefaults()
-		fmt.Println("\nEnvironment variables can be provided:")
-		fmt.Println("  YACT_CA_PATH - path to the CA certificate")
-		fmt.Println("  YACT_CERT_PATH - path to the TSL certificate")
-		fmt.Println("  YACT_KEY_PATH - path to the TLS certificate key")
 		fmt.Println("\nCommands:")
 		fmt.Println("  proxy    Start a proxy server")
 		fmt.Println("  client   Start a client")
@@ -42,12 +39,8 @@ func parseArgs() (Action, error) {
 		fmt.Println("")
 	}
 
-	commonCfg := &config.CommonConfig{}
-
-	global.BoolVar(&commonCfg.Debug, "d", false, "debug output")
-	global.StringVar(&commonCfg.CAPath, "ca", "", "CA certificate path")
-	global.StringVar(&commonCfg.CertPath, "cert", "", "TLS certificate path")
-	global.StringVar(&commonCfg.KeyPath, "key", "", "TLS key path")
+	var debug bool
+	global.BoolVar(&debug, "d", false, "debug output")
 
 	err := global.Parse(os.Args[1:])
 	if err != nil {
@@ -63,61 +56,31 @@ func parseArgs() (Action, error) {
 	subCommand := remaining[0]
 	subCommandArgs := remaining[1:]
 
-	logger := initLogger(commonCfg.Debug)
+	logger := initLogger(debug)
 
 	switch subCommand {
 	case "proxy":
-		return handleProxy(commonCfg, logger, subCommandArgs)
+		return handleProxy(logger, subCommandArgs)
 	case "client":
-		return handleClient(commonCfg, logger, subCommandArgs)
+		return handleClient(logger, subCommandArgs)
 	default:
 		global.Usage()
 		return nil, fmt.Errorf("unknown command: %s", subCommand)
 	}
 }
 
-func handleProxy(commonCfg *config.CommonConfig, logger logger.Logger, args []string) (Action, error) { //nolint:dupl
+func handleProxy(logger logger.Logger, args []string) (Action, error) { //nolint:dupl
 	fs := flag.NewFlagSet("proxy", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 
-	cfg := &client.Config{
-		CommonConfig: commonCfg,
-	}
+	cfg := proxy.Config{}
+
+	fs.StringVar(&cfg.TLS.CAPath, "ca", "", "CA certificate path")
+	fs.StringVar(&cfg.TLS.CertPath, "cert", "", "TLS certificate path")
+	fs.StringVar(&cfg.TLS.KeyPath, "key", "", "TLS key path")
 
 	fs.StringVar(&cfg.ProxyAddr, "addr", ":8008", "address to listen on")
 
-	fs.Usage = func() {
-		fs.SetOutput(os.Stdout)
-		defer fs.SetOutput(io.Discard)
-
-		fmt.Printf("Usage: %s [global flags] proxy [args]\n", command)
-		fs.PrintDefaults()
-	}
-
-	if err := fs.Parse(args); err != nil {
-		return nil, err
-	}
-
-	cfg.ReadEnv()
-
-	if err := cfg.Validate(); err != nil {
-		return nil, err
-	}
-
-	return Action(func(ctx context.Context) error {
-		return proxy.Run(ctx, logger, cfg.ProxyAddr)
-	}), nil
-}
-
-func handleClient(commonCfg *config.CommonConfig, logger logger.Logger, args []string) (Action, error) { //nolint:dupl
-	fs := flag.NewFlagSet("client", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-
-	cfg := &proxy.Config{
-		CommonConfig: commonCfg,
-	}
-
-	fs.StringVar(&cfg.ProxyAddr, "addr", ":8008", "address of proxy to listen to")
 	fs.DurationVar(&cfg.KeepAliveInterval, "i", proxy.DefaultKeepAliveInterval, "keep-alive interval")
 	fs.DurationVar(&cfg.KeepAliveTimeout, "t", proxy.DefaultKeepAliveTimeout, "keep-alive timeout")
 
@@ -125,21 +88,68 @@ func handleClient(commonCfg *config.CommonConfig, logger logger.Logger, args []s
 		fs.SetOutput(os.Stdout)
 		defer fs.SetOutput(io.Discard)
 
-		fmt.Printf("Usage: %s [global flags] client [args]\n", command)
+		fmt.Printf("Usage: %s [global flags] proxy [args]\n", command)
 		fs.PrintDefaults()
+		fmt.Println("\nEnvironment variables can be provided:")
+		_ = envconfig.Usage(config.EnvVarPrefix, &cfg)
 	}
 
 	if err := fs.Parse(args); err != nil {
 		return nil, err
 	}
 
-	cfg.ReadEnv()
+	if err := config.Load(&cfg); err != nil {
+		return nil, err
+	}
+
+	logger.Debug("config", "config", cfg)
 
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
 
 	return Action(func(ctx context.Context) error {
+		logger.DebugContext(ctx, "config", "config", cfg)
+		return proxy.Run(ctx, logger, cfg.ProxyAddr)
+	}), nil
+}
+
+func handleClient(logger logger.Logger, args []string) (Action, error) { //nolint:dupl
+	fs := flag.NewFlagSet("client", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+
+	cfg := client.Config{}
+
+	fs.StringVar(&cfg.TLS.CAPath, "ca", "", "CA certificate path")
+	fs.StringVar(&cfg.TLS.CertPath, "cert", "", "TLS certificate path")
+	fs.StringVar(&cfg.TLS.KeyPath, "key", "", "TLS key path")
+
+	fs.StringVar(&cfg.ProxyAddr, "addr", ":8008", "address of proxy to listen to")
+
+	fs.Usage = func() {
+		fs.SetOutput(os.Stdout)
+		defer fs.SetOutput(io.Discard)
+
+		fmt.Printf("Usage: %s [global flags] client [args]\n", command)
+		fs.PrintDefaults()
+		fmt.Println("\nEnvironment variables can be provided:")
+		envconfig.Usage(config.EnvVarPrefix, &cfg)
+	}
+
+	if err := fs.Parse(args); err != nil {
+		return nil, err
+	}
+
+	if err := config.Load(&cfg); err != nil {
+		return nil, err
+	}
+
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
+
+	return Action(func(ctx context.Context) error {
+		logger.DebugContext(ctx, "config", "config", cfg)
 		return client.Run(ctx, logger, cfg.ProxyAddr)
 	}), nil
 }

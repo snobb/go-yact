@@ -49,7 +49,7 @@ func makeServerConn(cfg *Config) (*grpc.ClientConn, func(), error) {
 }
 
 func initCredentials(cfg *Config) (credentials.TransportCredentials, error) {
-	caCert, err := os.ReadFile(cfg.CAPath)
+	caCert, err := os.ReadFile(cfg.TLS.CAPath)
 	if err != nil {
 		return nil, err
 	}
@@ -59,7 +59,7 @@ func initCredentials(cfg *Config) (credentials.TransportCredentials, error) {
 		return nil, fmt.Errorf("failed to append CA certificate")
 	}
 
-	serverCert, err := tls.LoadX509KeyPair(cfg.CertPath, cfg.KeyPath)
+	serverCert, err := tls.LoadX509KeyPair(cfg.TLS.CertPath, cfg.TLS.KeyPath)
 	if err != nil {
 		return nil, err
 	}
