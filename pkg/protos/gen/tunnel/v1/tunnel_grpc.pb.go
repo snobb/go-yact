@@ -19,46 +19,134 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	ProxyService_ControlChannel_FullMethodName = "/tunnel.v1.ProxyService/ControlChannel"
-	ProxyService_DataPipe_FullMethodName       = "/tunnel.v1.ProxyService/DataPipe"
+	TunnelService_RegisterProxy_FullMethodName = "/tunnel.v1.TunnelService/RegisterProxy"
+	TunnelService_ListenEvents_FullMethodName  = "/tunnel.v1.TunnelService/ListenEvents"
+	TunnelService_OpenDataPipe_FullMethodName  = "/tunnel.v1.TunnelService/OpenDataPipe"
 )
 
-// ProxyServiceClient is the client API for ProxyService service.
+// TunnelServiceClient is the client API for TunnelService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
-// ProxyService handles tunnel registration and connection signaling.
-type ProxyServiceClient interface {
-	// Long-lived bi-directional stream for control signals
-	ControlChannel(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ClientControlMessage, ServerControlMessage], error)
-	// Bi-directional stream for raw payload piping (Data Plane)
-	DataPipe(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[DataPacket, DataPacket], error)
+// ============================================================================
+// Tunnel Control & Data Plane Architecture
+// ============================================================================
+//
+// Overview:
+// ---------
+// This service defines a secure, mTLS-authenticated TCP tunneling protocol
+// over gRPC. It allows a client (behind a NAT/firewall) to expose a local TCP
+// service through a public proxy server listening on a designated port.
+//
+// Protocol Lifecycle:
+// -------------------
+//  1. Registration (Unary RPC):
+//     The client calls `RegisterProxy` providing the desired port and optional
+//     secret. The server starts an external TCP listener on the requested port
+//     and responds with confirmation.
+//
+//  2. Control Plane / Event Notification (Server-Streaming RPC):
+//     The client invokes `ListenEvents` to maintain a long-lived, server-to-client
+//     event stream. Whenever an external user connects to the proxy listener:
+//     a) The server generates a unique, cryptographically secure `connection_id`.
+//     b) The server temporarily holds the incoming user socket.
+//     c) The server emits a `NewConnectionEvent(connection_id)` to the client
+//     over `ListenEvents`.
+//
+//  3. Data Plane / Payload Proxying (Bi-Directional Streaming RPC):
+//     Upon receiving a `NewConnectionEvent`:
+//     a) The client dials its local target service (e.g., localhost:8080).
+//     b) The client invokes `OpenDataPipe` to open a new, dedicated bi-directional
+//     stream to the proxy server.
+//     c) In the VERY FIRST `DataPacket` sent over `OpenDataPipe`, the client includes
+//     the `connection_id` token to claim the waiting socket.
+//     d) The server verifies the token, bridges the external TCP socket to the gRPC
+//     stream, and raw byte proxying begins.
+//
+// Design Rationale & Trade-offs:
+// -----------------------------
+//   - Decoupled RPC Isolation: Control events (`ListenEvents`) are separated from
+//     data streams (`OpenDataPipe`). A failure or disconnect in a single proxy data
+//     stream never impacts the primary event stream or other active connections.
+//
+//   - Security & NAT Traversal: The client initiates all connections outbound to
+//     the server on a single public gRPC port (8901), eliminating the need for extra
+//     open server ports, complex port-mapping, or NAT holes. Token validation in
+//     `OpenDataPipe` prevents connection hijacking across shared egress IPs/CGNATs.
+//
+//   - Built-in Transport Management: Uses gRPC mTLS for transport encryption and
+//     mutual identity verification, while relying on HTTP/2 Keep-Alives for dead
+//     connection detection instead of custom application-level ping/pongs.
+//
+// ============================================================================
+//
+// [ Local Client ]                                          [ Tunnel Server ]
+//
+//	|                                                               |
+//	|--- 1. RegisterProxy(HandshakeRequest{port: 8080}) ----------->|
+//	|<-- 2. HandshakeResponse{success: true} -----------------------|
+//	|                                                               |
+//	|--- 3. ListenEvents(EventStreamRequest) ---------------------->| (Keeps stream open)
+//	|                                                               |
+//	|              (External TCP user connects to 8080)             |
+//	|                                                               |
+//	|<-- 4. NewConnectionEvent{id: "uuid-123"} ---------------------|
+//	|                                                               |
+//	|--- 5. OpenDataPipe() ---------------------------------------->|
+//	|       First Packet: DataPacket{connection_id: "uuid-123"}     |-- Matches "uuid-123" to user
+//	|       Subsequent:   DataPacket{payload: [...] }               |   socket & bridges pipes
+//	|<================ Bi-directional Data Pipe ===================>|
+//
+// ============================================================================
+type TunnelServiceClient interface {
+	// RegisterProxy registers proxy listeners on the server.
+	RegisterProxy(ctx context.Context, in *HandshakeRequest, opts ...grpc.CallOption) (*HandshakeResponse, error)
+	// ListenEvents subscribes client for the new connection events.
+	ListenEvents(ctx context.Context, in *EventStreamRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[NewConnectionEvent], error)
+	// OpenDataPipe initiates a bi-directional data stream bound to a specific connection_id.
+	OpenDataPipe(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[DataPacket, DataPacket], error)
 }
 
-type proxyServiceClient struct {
+type tunnelServiceClient struct {
 	cc grpc.ClientConnInterface
 }
 
-func NewProxyServiceClient(cc grpc.ClientConnInterface) ProxyServiceClient {
-	return &proxyServiceClient{cc}
+func NewTunnelServiceClient(cc grpc.ClientConnInterface) TunnelServiceClient {
+	return &tunnelServiceClient{cc}
 }
 
-func (c *proxyServiceClient) ControlChannel(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ClientControlMessage, ServerControlMessage], error) {
+func (c *tunnelServiceClient) RegisterProxy(ctx context.Context, in *HandshakeRequest, opts ...grpc.CallOption) (*HandshakeResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &ProxyService_ServiceDesc.Streams[0], ProxyService_ControlChannel_FullMethodName, cOpts...)
+	out := new(HandshakeResponse)
+	err := c.cc.Invoke(ctx, TunnelService_RegisterProxy_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
-	x := &grpc.GenericClientStream[ClientControlMessage, ServerControlMessage]{ClientStream: stream}
+	return out, nil
+}
+
+func (c *tunnelServiceClient) ListenEvents(ctx context.Context, in *EventStreamRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[NewConnectionEvent], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &TunnelService_ServiceDesc.Streams[0], TunnelService_ListenEvents_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[EventStreamRequest, NewConnectionEvent]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
 	return x, nil
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type ProxyService_ControlChannelClient = grpc.BidiStreamingClient[ClientControlMessage, ServerControlMessage]
+type TunnelService_ListenEventsClient = grpc.ServerStreamingClient[NewConnectionEvent]
 
-func (c *proxyServiceClient) DataPipe(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[DataPacket, DataPacket], error) {
+func (c *tunnelServiceClient) OpenDataPipe(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[DataPacket, DataPacket], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &ProxyService_ServiceDesc.Streams[1], ProxyService_DataPipe_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &TunnelService_ServiceDesc.Streams[1], TunnelService_OpenDataPipe_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -67,86 +155,186 @@ func (c *proxyServiceClient) DataPipe(ctx context.Context, opts ...grpc.CallOpti
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type ProxyService_DataPipeClient = grpc.BidiStreamingClient[DataPacket, DataPacket]
+type TunnelService_OpenDataPipeClient = grpc.BidiStreamingClient[DataPacket, DataPacket]
 
-// ProxyServiceServer is the server API for ProxyService service.
-// All implementations must embed UnimplementedProxyServiceServer
+// TunnelServiceServer is the server API for TunnelService service.
+// All implementations must embed UnimplementedTunnelServiceServer
 // for forward compatibility.
 //
-// ProxyService handles tunnel registration and connection signaling.
-type ProxyServiceServer interface {
-	// Long-lived bi-directional stream for control signals
-	ControlChannel(grpc.BidiStreamingServer[ClientControlMessage, ServerControlMessage]) error
-	// Bi-directional stream for raw payload piping (Data Plane)
-	DataPipe(grpc.BidiStreamingServer[DataPacket, DataPacket]) error
-	mustEmbedUnimplementedProxyServiceServer()
+// ============================================================================
+// Tunnel Control & Data Plane Architecture
+// ============================================================================
+//
+// Overview:
+// ---------
+// This service defines a secure, mTLS-authenticated TCP tunneling protocol
+// over gRPC. It allows a client (behind a NAT/firewall) to expose a local TCP
+// service through a public proxy server listening on a designated port.
+//
+// Protocol Lifecycle:
+// -------------------
+//  1. Registration (Unary RPC):
+//     The client calls `RegisterProxy` providing the desired port and optional
+//     secret. The server starts an external TCP listener on the requested port
+//     and responds with confirmation.
+//
+//  2. Control Plane / Event Notification (Server-Streaming RPC):
+//     The client invokes `ListenEvents` to maintain a long-lived, server-to-client
+//     event stream. Whenever an external user connects to the proxy listener:
+//     a) The server generates a unique, cryptographically secure `connection_id`.
+//     b) The server temporarily holds the incoming user socket.
+//     c) The server emits a `NewConnectionEvent(connection_id)` to the client
+//     over `ListenEvents`.
+//
+//  3. Data Plane / Payload Proxying (Bi-Directional Streaming RPC):
+//     Upon receiving a `NewConnectionEvent`:
+//     a) The client dials its local target service (e.g., localhost:8080).
+//     b) The client invokes `OpenDataPipe` to open a new, dedicated bi-directional
+//     stream to the proxy server.
+//     c) In the VERY FIRST `DataPacket` sent over `OpenDataPipe`, the client includes
+//     the `connection_id` token to claim the waiting socket.
+//     d) The server verifies the token, bridges the external TCP socket to the gRPC
+//     stream, and raw byte proxying begins.
+//
+// Design Rationale & Trade-offs:
+// -----------------------------
+//   - Decoupled RPC Isolation: Control events (`ListenEvents`) are separated from
+//     data streams (`OpenDataPipe`). A failure or disconnect in a single proxy data
+//     stream never impacts the primary event stream or other active connections.
+//
+//   - Security & NAT Traversal: The client initiates all connections outbound to
+//     the server on a single public gRPC port (8901), eliminating the need for extra
+//     open server ports, complex port-mapping, or NAT holes. Token validation in
+//     `OpenDataPipe` prevents connection hijacking across shared egress IPs/CGNATs.
+//
+//   - Built-in Transport Management: Uses gRPC mTLS for transport encryption and
+//     mutual identity verification, while relying on HTTP/2 Keep-Alives for dead
+//     connection detection instead of custom application-level ping/pongs.
+//
+// ============================================================================
+//
+// [ Local Client ]                                          [ Tunnel Server ]
+//
+//	|                                                               |
+//	|--- 1. RegisterProxy(HandshakeRequest{port: 8080}) ----------->|
+//	|<-- 2. HandshakeResponse{success: true} -----------------------|
+//	|                                                               |
+//	|--- 3. ListenEvents(EventStreamRequest) ---------------------->| (Keeps stream open)
+//	|                                                               |
+//	|              (External TCP user connects to 8080)             |
+//	|                                                               |
+//	|<-- 4. NewConnectionEvent{id: "uuid-123"} ---------------------|
+//	|                                                               |
+//	|--- 5. OpenDataPipe() ---------------------------------------->|
+//	|       First Packet: DataPacket{connection_id: "uuid-123"}     |-- Matches "uuid-123" to user
+//	|       Subsequent:   DataPacket{payload: [...] }               |   socket & bridges pipes
+//	|<================ Bi-directional Data Pipe ===================>|
+//
+// ============================================================================
+type TunnelServiceServer interface {
+	// RegisterProxy registers proxy listeners on the server.
+	RegisterProxy(context.Context, *HandshakeRequest) (*HandshakeResponse, error)
+	// ListenEvents subscribes client for the new connection events.
+	ListenEvents(*EventStreamRequest, grpc.ServerStreamingServer[NewConnectionEvent]) error
+	// OpenDataPipe initiates a bi-directional data stream bound to a specific connection_id.
+	OpenDataPipe(grpc.BidiStreamingServer[DataPacket, DataPacket]) error
+	mustEmbedUnimplementedTunnelServiceServer()
 }
 
-// UnimplementedProxyServiceServer must be embedded to have
+// UnimplementedTunnelServiceServer must be embedded to have
 // forward compatible implementations.
 //
 // NOTE: this should be embedded by value instead of pointer to avoid a nil
 // pointer dereference when methods are called.
-type UnimplementedProxyServiceServer struct{}
+type UnimplementedTunnelServiceServer struct{}
 
-func (UnimplementedProxyServiceServer) ControlChannel(grpc.BidiStreamingServer[ClientControlMessage, ServerControlMessage]) error {
-	return status.Error(codes.Unimplemented, "method ControlChannel not implemented")
+func (UnimplementedTunnelServiceServer) RegisterProxy(context.Context, *HandshakeRequest) (*HandshakeResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method RegisterProxy not implemented")
 }
-func (UnimplementedProxyServiceServer) DataPipe(grpc.BidiStreamingServer[DataPacket, DataPacket]) error {
-	return status.Error(codes.Unimplemented, "method DataPipe not implemented")
+func (UnimplementedTunnelServiceServer) ListenEvents(*EventStreamRequest, grpc.ServerStreamingServer[NewConnectionEvent]) error {
+	return status.Error(codes.Unimplemented, "method ListenEvents not implemented")
 }
-func (UnimplementedProxyServiceServer) mustEmbedUnimplementedProxyServiceServer() {}
-func (UnimplementedProxyServiceServer) testEmbeddedByValue()                      {}
+func (UnimplementedTunnelServiceServer) OpenDataPipe(grpc.BidiStreamingServer[DataPacket, DataPacket]) error {
+	return status.Error(codes.Unimplemented, "method OpenDataPipe not implemented")
+}
+func (UnimplementedTunnelServiceServer) mustEmbedUnimplementedTunnelServiceServer() {}
+func (UnimplementedTunnelServiceServer) testEmbeddedByValue()                       {}
 
-// UnsafeProxyServiceServer may be embedded to opt out of forward compatibility for this service.
-// Use of this interface is not recommended, as added methods to ProxyServiceServer will
+// UnsafeTunnelServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to TunnelServiceServer will
 // result in compilation errors.
-type UnsafeProxyServiceServer interface {
-	mustEmbedUnimplementedProxyServiceServer()
+type UnsafeTunnelServiceServer interface {
+	mustEmbedUnimplementedTunnelServiceServer()
 }
 
-func RegisterProxyServiceServer(s grpc.ServiceRegistrar, srv ProxyServiceServer) {
-	// If the following call panics, it indicates UnimplementedProxyServiceServer was
+func RegisterTunnelServiceServer(s grpc.ServiceRegistrar, srv TunnelServiceServer) {
+	// If the following call panics, it indicates UnimplementedTunnelServiceServer was
 	// embedded by pointer and is nil.  This will cause panics if an
 	// unimplemented method is ever invoked, so we test this at initialization
 	// time to prevent it from happening at runtime later due to I/O.
 	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
 		t.testEmbeddedByValue()
 	}
-	s.RegisterService(&ProxyService_ServiceDesc, srv)
+	s.RegisterService(&TunnelService_ServiceDesc, srv)
 }
 
-func _ProxyService_ControlChannel_Handler(srv interface{}, stream grpc.ServerStream) error {
-	return srv.(ProxyServiceServer).ControlChannel(&grpc.GenericServerStream[ClientControlMessage, ServerControlMessage]{ServerStream: stream})
+func _TunnelService_RegisterProxy_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(HandshakeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TunnelServiceServer).RegisterProxy(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: TunnelService_RegisterProxy_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TunnelServiceServer).RegisterProxy(ctx, req.(*HandshakeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _TunnelService_ListenEvents_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(EventStreamRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(TunnelServiceServer).ListenEvents(m, &grpc.GenericServerStream[EventStreamRequest, NewConnectionEvent]{ServerStream: stream})
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type ProxyService_ControlChannelServer = grpc.BidiStreamingServer[ClientControlMessage, ServerControlMessage]
+type TunnelService_ListenEventsServer = grpc.ServerStreamingServer[NewConnectionEvent]
 
-func _ProxyService_DataPipe_Handler(srv interface{}, stream grpc.ServerStream) error {
-	return srv.(ProxyServiceServer).DataPipe(&grpc.GenericServerStream[DataPacket, DataPacket]{ServerStream: stream})
+func _TunnelService_OpenDataPipe_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(TunnelServiceServer).OpenDataPipe(&grpc.GenericServerStream[DataPacket, DataPacket]{ServerStream: stream})
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type ProxyService_DataPipeServer = grpc.BidiStreamingServer[DataPacket, DataPacket]
+type TunnelService_OpenDataPipeServer = grpc.BidiStreamingServer[DataPacket, DataPacket]
 
-// ProxyService_ServiceDesc is the grpc.ServiceDesc for ProxyService service.
+// TunnelService_ServiceDesc is the grpc.ServiceDesc for TunnelService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
-var ProxyService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "tunnel.v1.ProxyService",
-	HandlerType: (*ProxyServiceServer)(nil),
-	Methods:     []grpc.MethodDesc{},
+var TunnelService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "tunnel.v1.TunnelService",
+	HandlerType: (*TunnelServiceServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "RegisterProxy",
+			Handler:    _TunnelService_RegisterProxy_Handler,
+		},
+	},
 	Streams: []grpc.StreamDesc{
 		{
-			StreamName:    "ControlChannel",
-			Handler:       _ProxyService_ControlChannel_Handler,
+			StreamName:    "ListenEvents",
+			Handler:       _TunnelService_ListenEvents_Handler,
 			ServerStreams: true,
-			ClientStreams: true,
 		},
 		{
-			StreamName:    "DataPipe",
-			Handler:       _ProxyService_DataPipe_Handler,
+			StreamName:    "OpenDataPipe",
+			Handler:       _TunnelService_OpenDataPipe_Handler,
 			ServerStreams: true,
 			ClientStreams: true,
 		},

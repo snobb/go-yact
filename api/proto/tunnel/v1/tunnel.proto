@@ -4,57 +4,117 @@ package tunnel.v1;
 
 option go_package = "tunnel/v1;tunnelv1";
 
-// ProxyService handles tunnel registration and connection signaling.
-service ProxyService {
-  // Long-lived bi-directional stream for control signals
-  rpc ControlChannel (stream ClientControlMessage) returns (stream ServerControlMessage);
+// ============================================================================
+// Tunnel Control & Data Plane Architecture
+// ============================================================================
+//
+// Overview:
+// ---------
+// This service defines a secure, mTLS-authenticated TCP tunneling protocol
+// over gRPC. It allows a client (behind a NAT/firewall) to expose a local TCP
+// service through a public proxy server listening on a designated port.
+//
+// Protocol Lifecycle:
+// -------------------
+// 1. Registration (Unary RPC):
+//    The client calls `RegisterProxy` providing the desired port and optional
+//    secret. The server starts an external TCP listener on the requested port
+//    and responds with confirmation.
+//
+// 2. Control Plane / Event Notification (Server-Streaming RPC):
+//    The client invokes `ListenEvents` to maintain a long-lived, server-to-client
+//    event stream. Whenever an external user connects to the proxy listener:
+//    a) The server generates a unique, cryptographically secure `connection_id`.
+//    b) The server temporarily holds the incoming user socket.
+//    c) The server emits a `NewConnectionEvent(connection_id)` to the client
+//       over `ListenEvents`.
+//
+// 3. Data Plane / Payload Proxying (Bi-Directional Streaming RPC):
+//    Upon receiving a `NewConnectionEvent`:
+//    a) The client dials its local target service (e.g., localhost:8080).
+//    b) The client invokes `OpenDataPipe` to open a new, dedicated bi-directional
+//       stream to the proxy server.
+//    c) In the VERY FIRST `DataPacket` sent over `OpenDataPipe`, the client includes
+//       the `connection_id` token to claim the waiting socket.
+//    d) The server verifies the token, bridges the external TCP socket to the gRPC
+//       stream, and raw byte proxying begins.
+//
+// Design Rationale & Trade-offs:
+// -----------------------------
+// - Decoupled RPC Isolation: Control events (`ListenEvents`) are separated from
+//   data streams (`OpenDataPipe`). A failure or disconnect in a single proxy data
+//   stream never impacts the primary event stream or other active connections.
+//
+// - Security & NAT Traversal: The client initiates all connections outbound to
+//   the server on a single public gRPC port (8901), eliminating the need for extra
+//   open server ports, complex port-mapping, or NAT holes. Token validation in
+//   `OpenDataPipe` prevents connection hijacking across shared egress IPs/CGNATs.
+//
+// - Built-in Transport Management: Uses gRPC mTLS for transport encryption and
+//   mutual identity verification, while relying on HTTP/2 Keep-Alives for dead
+//   connection detection instead of custom application-level ping/pongs.
+// ============================================================================
+//
+// [ Local Client ]                                          [ Tunnel Server ]
+//   |                                                               |
+//   |--- 1. RegisterProxy(HandshakeRequest{port: 8080}) ----------->|
+//   |<-- 2. HandshakeResponse{success: true} -----------------------|
+//   |                                                               |
+//   |--- 3. ListenEvents(EventStreamRequest) ---------------------->| (Keeps stream open)
+//   |                                                               |
+//   |              (External TCP user connects to 8080)             |
+//   |                                                               |
+//   |<-- 4. NewConnectionEvent{id: "uuid-123"} ---------------------|
+//   |                                                               |
+//   |--- 5. OpenDataPipe() ---------------------------------------->|
+//   |       First Packet: DataPacket{connection_id: "uuid-123"}     |-- Matches "uuid-123" to user
+//   |       Subsequent:   DataPacket{payload: [...] }               |   socket & bridges pipes
+//   |<================ Bi-directional Data Pipe ===================>|
+//
+// ============================================================================
+//
+service TunnelService {
+  // RegisterProxy registers proxy listeners on the server.
+  rpc RegisterProxy (HandshakeRequest) returns (HandshakeResponse);
 
-  // Bi-directional stream for raw payload piping (Data Plane)
-  rpc DataPipe (stream DataPacket) returns (stream DataPacket);
+  // ListenEvents subscribes client for the new connection events.
+  rpc ListenEvents (EventStreamRequest) returns (stream NewConnectionEvent);
+
+  // OpenDataPipe initiates a bi-directional data stream bound to a specific connection_id.
+  rpc OpenDataPipe (stream DataPacket) returns (stream DataPacket);
 }
 
-// --- Control Messages ---
+message HandshakeRequest {
+  string secret = 1;
 
-message ClientControlMessage {
-  oneof message {
-    HelloRequest hello = 1;
-    // Client notifies server it has connected to the data stream
-    AcceptAck accept_ack = 2;
-  }
+  // The local IP address on the server to bind to (e.g., "0.0.0.0", "127.0.0.1", "::")
+  // If empty,  server defaults to "0.0.0.0"
+  string bind_address = 2;
+
+  // Requested listener port (e.g., 8080). Use 0 for dynamic/random port assignment.
+  uint32 requested_port = 3;
 }
 
-message ServerControlMessage {
-  oneof message {
-    HelloResponse hello_response = 1;
-    // Server signals client that an external TCP user connected
-    NewConnectionEvent new_connection = 2;
-  }
-}
-
-message HelloRequest {
-  string secret = 1;           // Optional authentication secret
-  uint32 requested_port = 2;   // Port client wants server to listen on
-}
-
-message HelloResponse {
+message HandshakeResponse {
   bool success = 1;
   string error_message = 2;
   uint32 assigned_port = 3;
 }
 
+message EventStreamRequest {
+  // Can carry session token/auth verified from RegisterProxy
+  uint32 listening_port = 1;
+}
+
 message NewConnectionEvent {
-  string connection_id = 1;    // Random UUID generated by server
-  string remote_addr = 2;      // Optional: Client source address for logs/metrics
-}
-
-message AcceptAck {
   string connection_id = 1;
+  string remote_addr = 2;
 }
-
-// --- Data Messages ---
 
 message DataPacket {
-  // connection_id is sent in the FIRST DataPacket frame when establishing DataPipe
+  // connection_id is sent ONLY in the very first packet from client -> server that initiates the
+  // proxy connection. Subsequent packets only populate payload.
   string connection_id = 1;
+
   bytes payload = 2;
 }

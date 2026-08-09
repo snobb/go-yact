@@ -21,31 +21,32 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-type ClientControlMessage struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// Types that are valid to be assigned to Message:
-	//
-	//	*ClientControlMessage_Hello
-	//	*ClientControlMessage_AcceptAck
-	Message       isClientControlMessage_Message `protobuf_oneof:"message"`
+type HandshakeRequest struct {
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Secret string                 `protobuf:"bytes,1,opt,name=secret,proto3" json:"secret,omitempty"`
+	// The local IP address on the server to bind to (e.g., "0.0.0.0", "127.0.0.1", "::")
+	// If empty,  server defaults to "0.0.0.0"
+	BindAddress string `protobuf:"bytes,2,opt,name=bind_address,json=bindAddress,proto3" json:"bind_address,omitempty"`
+	// Requested listener port (e.g., 8080). Use 0 for dynamic/random port assignment.
+	RequestedPort uint32 `protobuf:"varint,3,opt,name=requested_port,json=requestedPort,proto3" json:"requested_port,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *ClientControlMessage) Reset() {
-	*x = ClientControlMessage{}
+func (x *HandshakeRequest) Reset() {
+	*x = HandshakeRequest{}
 	mi := &file_tunnel_v1_tunnel_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *ClientControlMessage) String() string {
+func (x *HandshakeRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*ClientControlMessage) ProtoMessage() {}
+func (*HandshakeRequest) ProtoMessage() {}
 
-func (x *ClientControlMessage) ProtoReflect() protoreflect.Message {
+func (x *HandshakeRequest) ProtoReflect() protoreflect.Message {
 	mi := &file_tunnel_v1_tunnel_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -57,189 +58,33 @@ func (x *ClientControlMessage) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use ClientControlMessage.ProtoReflect.Descriptor instead.
-func (*ClientControlMessage) Descriptor() ([]byte, []int) {
+// Deprecated: Use HandshakeRequest.ProtoReflect.Descriptor instead.
+func (*HandshakeRequest) Descriptor() ([]byte, []int) {
 	return file_tunnel_v1_tunnel_proto_rawDescGZIP(), []int{0}
 }
 
-func (x *ClientControlMessage) GetMessage() isClientControlMessage_Message {
-	if x != nil {
-		return x.Message
-	}
-	return nil
-}
-
-func (x *ClientControlMessage) GetHello() *HelloRequest {
-	if x != nil {
-		if x, ok := x.Message.(*ClientControlMessage_Hello); ok {
-			return x.Hello
-		}
-	}
-	return nil
-}
-
-func (x *ClientControlMessage) GetAcceptAck() *AcceptAck {
-	if x != nil {
-		if x, ok := x.Message.(*ClientControlMessage_AcceptAck); ok {
-			return x.AcceptAck
-		}
-	}
-	return nil
-}
-
-type isClientControlMessage_Message interface {
-	isClientControlMessage_Message()
-}
-
-type ClientControlMessage_Hello struct {
-	Hello *HelloRequest `protobuf:"bytes,1,opt,name=hello,proto3,oneof"`
-}
-
-type ClientControlMessage_AcceptAck struct {
-	// Client notifies server it has connected to the data stream
-	AcceptAck *AcceptAck `protobuf:"bytes,2,opt,name=accept_ack,json=acceptAck,proto3,oneof"`
-}
-
-func (*ClientControlMessage_Hello) isClientControlMessage_Message() {}
-
-func (*ClientControlMessage_AcceptAck) isClientControlMessage_Message() {}
-
-type ServerControlMessage struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// Types that are valid to be assigned to Message:
-	//
-	//	*ServerControlMessage_HelloResponse
-	//	*ServerControlMessage_NewConnection
-	Message       isServerControlMessage_Message `protobuf_oneof:"message"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *ServerControlMessage) Reset() {
-	*x = ServerControlMessage{}
-	mi := &file_tunnel_v1_tunnel_proto_msgTypes[1]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *ServerControlMessage) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*ServerControlMessage) ProtoMessage() {}
-
-func (x *ServerControlMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_tunnel_v1_tunnel_proto_msgTypes[1]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use ServerControlMessage.ProtoReflect.Descriptor instead.
-func (*ServerControlMessage) Descriptor() ([]byte, []int) {
-	return file_tunnel_v1_tunnel_proto_rawDescGZIP(), []int{1}
-}
-
-func (x *ServerControlMessage) GetMessage() isServerControlMessage_Message {
-	if x != nil {
-		return x.Message
-	}
-	return nil
-}
-
-func (x *ServerControlMessage) GetHelloResponse() *HelloResponse {
-	if x != nil {
-		if x, ok := x.Message.(*ServerControlMessage_HelloResponse); ok {
-			return x.HelloResponse
-		}
-	}
-	return nil
-}
-
-func (x *ServerControlMessage) GetNewConnection() *NewConnectionEvent {
-	if x != nil {
-		if x, ok := x.Message.(*ServerControlMessage_NewConnection); ok {
-			return x.NewConnection
-		}
-	}
-	return nil
-}
-
-type isServerControlMessage_Message interface {
-	isServerControlMessage_Message()
-}
-
-type ServerControlMessage_HelloResponse struct {
-	HelloResponse *HelloResponse `protobuf:"bytes,1,opt,name=hello_response,json=helloResponse,proto3,oneof"`
-}
-
-type ServerControlMessage_NewConnection struct {
-	// Server signals client that an external TCP user connected
-	NewConnection *NewConnectionEvent `protobuf:"bytes,2,opt,name=new_connection,json=newConnection,proto3,oneof"`
-}
-
-func (*ServerControlMessage_HelloResponse) isServerControlMessage_Message() {}
-
-func (*ServerControlMessage_NewConnection) isServerControlMessage_Message() {}
-
-type HelloRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Secret        string                 `protobuf:"bytes,1,opt,name=secret,proto3" json:"secret,omitempty"`                                     // Optional authentication secret
-	RequestedPort uint32                 `protobuf:"varint,2,opt,name=requested_port,json=requestedPort,proto3" json:"requested_port,omitempty"` // Port client wants server to listen on
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *HelloRequest) Reset() {
-	*x = HelloRequest{}
-	mi := &file_tunnel_v1_tunnel_proto_msgTypes[2]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *HelloRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*HelloRequest) ProtoMessage() {}
-
-func (x *HelloRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_tunnel_v1_tunnel_proto_msgTypes[2]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use HelloRequest.ProtoReflect.Descriptor instead.
-func (*HelloRequest) Descriptor() ([]byte, []int) {
-	return file_tunnel_v1_tunnel_proto_rawDescGZIP(), []int{2}
-}
-
-func (x *HelloRequest) GetSecret() string {
+func (x *HandshakeRequest) GetSecret() string {
 	if x != nil {
 		return x.Secret
 	}
 	return ""
 }
 
-func (x *HelloRequest) GetRequestedPort() uint32 {
+func (x *HandshakeRequest) GetBindAddress() string {
+	if x != nil {
+		return x.BindAddress
+	}
+	return ""
+}
+
+func (x *HandshakeRequest) GetRequestedPort() uint32 {
 	if x != nil {
 		return x.RequestedPort
 	}
 	return 0
 }
 
-type HelloResponse struct {
+type HandshakeResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
 	ErrorMessage  string                 `protobuf:"bytes,2,opt,name=error_message,json=errorMessage,proto3" json:"error_message,omitempty"`
@@ -248,21 +93,21 @@ type HelloResponse struct {
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *HelloResponse) Reset() {
-	*x = HelloResponse{}
-	mi := &file_tunnel_v1_tunnel_proto_msgTypes[3]
+func (x *HandshakeResponse) Reset() {
+	*x = HandshakeResponse{}
+	mi := &file_tunnel_v1_tunnel_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *HelloResponse) String() string {
+func (x *HandshakeResponse) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*HelloResponse) ProtoMessage() {}
+func (*HandshakeResponse) ProtoMessage() {}
 
-func (x *HelloResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_tunnel_v1_tunnel_proto_msgTypes[3]
+func (x *HandshakeResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_tunnel_v1_tunnel_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -273,43 +118,88 @@ func (x *HelloResponse) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use HelloResponse.ProtoReflect.Descriptor instead.
-func (*HelloResponse) Descriptor() ([]byte, []int) {
-	return file_tunnel_v1_tunnel_proto_rawDescGZIP(), []int{3}
+// Deprecated: Use HandshakeResponse.ProtoReflect.Descriptor instead.
+func (*HandshakeResponse) Descriptor() ([]byte, []int) {
+	return file_tunnel_v1_tunnel_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *HelloResponse) GetSuccess() bool {
+func (x *HandshakeResponse) GetSuccess() bool {
 	if x != nil {
 		return x.Success
 	}
 	return false
 }
 
-func (x *HelloResponse) GetErrorMessage() string {
+func (x *HandshakeResponse) GetErrorMessage() string {
 	if x != nil {
 		return x.ErrorMessage
 	}
 	return ""
 }
 
-func (x *HelloResponse) GetAssignedPort() uint32 {
+func (x *HandshakeResponse) GetAssignedPort() uint32 {
 	if x != nil {
 		return x.AssignedPort
 	}
 	return 0
 }
 
+type EventStreamRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Can carry session token/auth verified from RegisterProxy
+	ListeningPort uint32 `protobuf:"varint,1,opt,name=listening_port,json=listeningPort,proto3" json:"listening_port,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *EventStreamRequest) Reset() {
+	*x = EventStreamRequest{}
+	mi := &file_tunnel_v1_tunnel_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EventStreamRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EventStreamRequest) ProtoMessage() {}
+
+func (x *EventStreamRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_tunnel_v1_tunnel_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use EventStreamRequest.ProtoReflect.Descriptor instead.
+func (*EventStreamRequest) Descriptor() ([]byte, []int) {
+	return file_tunnel_v1_tunnel_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *EventStreamRequest) GetListeningPort() uint32 {
+	if x != nil {
+		return x.ListeningPort
+	}
+	return 0
+}
+
 type NewConnectionEvent struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	ConnectionId  string                 `protobuf:"bytes,1,opt,name=connection_id,json=connectionId,proto3" json:"connection_id,omitempty"` // Random UUID generated by server
-	RemoteAddr    string                 `protobuf:"bytes,2,opt,name=remote_addr,json=remoteAddr,proto3" json:"remote_addr,omitempty"`       // Optional: Client source address for logs/metrics
+	ConnectionId  string                 `protobuf:"bytes,1,opt,name=connection_id,json=connectionId,proto3" json:"connection_id,omitempty"`
+	RemoteAddr    string                 `protobuf:"bytes,2,opt,name=remote_addr,json=remoteAddr,proto3" json:"remote_addr,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *NewConnectionEvent) Reset() {
 	*x = NewConnectionEvent{}
-	mi := &file_tunnel_v1_tunnel_proto_msgTypes[4]
+	mi := &file_tunnel_v1_tunnel_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -321,7 +211,7 @@ func (x *NewConnectionEvent) String() string {
 func (*NewConnectionEvent) ProtoMessage() {}
 
 func (x *NewConnectionEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_tunnel_v1_tunnel_proto_msgTypes[4]
+	mi := &file_tunnel_v1_tunnel_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -334,7 +224,7 @@ func (x *NewConnectionEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NewConnectionEvent.ProtoReflect.Descriptor instead.
 func (*NewConnectionEvent) Descriptor() ([]byte, []int) {
-	return file_tunnel_v1_tunnel_proto_rawDescGZIP(), []int{4}
+	return file_tunnel_v1_tunnel_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *NewConnectionEvent) GetConnectionId() string {
@@ -351,53 +241,10 @@ func (x *NewConnectionEvent) GetRemoteAddr() string {
 	return ""
 }
 
-type AcceptAck struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ConnectionId  string                 `protobuf:"bytes,1,opt,name=connection_id,json=connectionId,proto3" json:"connection_id,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *AcceptAck) Reset() {
-	*x = AcceptAck{}
-	mi := &file_tunnel_v1_tunnel_proto_msgTypes[5]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *AcceptAck) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*AcceptAck) ProtoMessage() {}
-
-func (x *AcceptAck) ProtoReflect() protoreflect.Message {
-	mi := &file_tunnel_v1_tunnel_proto_msgTypes[5]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use AcceptAck.ProtoReflect.Descriptor instead.
-func (*AcceptAck) Descriptor() ([]byte, []int) {
-	return file_tunnel_v1_tunnel_proto_rawDescGZIP(), []int{5}
-}
-
-func (x *AcceptAck) GetConnectionId() string {
-	if x != nil {
-		return x.ConnectionId
-	}
-	return ""
-}
-
 type DataPacket struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// connection_id is sent in the FIRST DataPacket frame when establishing DataPipe
+	// connection_id is sent ONLY in the very first packet from client -> server that initiates the
+	// proxy connection. Subsequent packets only populate payload.
 	ConnectionId  string `protobuf:"bytes,1,opt,name=connection_id,json=connectionId,proto3" json:"connection_id,omitempty"`
 	Payload       []byte `protobuf:"bytes,2,opt,name=payload,proto3" json:"payload,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -406,7 +253,7 @@ type DataPacket struct {
 
 func (x *DataPacket) Reset() {
 	*x = DataPacket{}
-	mi := &file_tunnel_v1_tunnel_proto_msgTypes[6]
+	mi := &file_tunnel_v1_tunnel_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -418,7 +265,7 @@ func (x *DataPacket) String() string {
 func (*DataPacket) ProtoMessage() {}
 
 func (x *DataPacket) ProtoReflect() protoreflect.Message {
-	mi := &file_tunnel_v1_tunnel_proto_msgTypes[6]
+	mi := &file_tunnel_v1_tunnel_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -431,7 +278,7 @@ func (x *DataPacket) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DataPacket.ProtoReflect.Descriptor instead.
 func (*DataPacket) Descriptor() ([]byte, []int) {
-	return file_tunnel_v1_tunnel_proto_rawDescGZIP(), []int{6}
+	return file_tunnel_v1_tunnel_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *DataPacket) GetConnectionId() string {
@@ -452,36 +299,29 @@ var File_tunnel_v1_tunnel_proto protoreflect.FileDescriptor
 
 const file_tunnel_v1_tunnel_proto_rawDesc = "" +
 	"\n" +
-	"\x16tunnel/v1/tunnel.proto\x12\ttunnel.v1\"\x89\x01\n" +
-	"\x14ClientControlMessage\x12/\n" +
-	"\x05hello\x18\x01 \x01(\v2\x17.tunnel.v1.HelloRequestH\x00R\x05hello\x125\n" +
-	"\n" +
-	"accept_ack\x18\x02 \x01(\v2\x14.tunnel.v1.AcceptAckH\x00R\tacceptAckB\t\n" +
-	"\amessage\"\xac\x01\n" +
-	"\x14ServerControlMessage\x12A\n" +
-	"\x0ehello_response\x18\x01 \x01(\v2\x18.tunnel.v1.HelloResponseH\x00R\rhelloResponse\x12F\n" +
-	"\x0enew_connection\x18\x02 \x01(\v2\x1d.tunnel.v1.NewConnectionEventH\x00R\rnewConnectionB\t\n" +
-	"\amessage\"M\n" +
-	"\fHelloRequest\x12\x16\n" +
-	"\x06secret\x18\x01 \x01(\tR\x06secret\x12%\n" +
-	"\x0erequested_port\x18\x02 \x01(\rR\rrequestedPort\"s\n" +
-	"\rHelloResponse\x12\x18\n" +
+	"\x16tunnel/v1/tunnel.proto\x12\ttunnel.v1\"t\n" +
+	"\x10HandshakeRequest\x12\x16\n" +
+	"\x06secret\x18\x01 \x01(\tR\x06secret\x12!\n" +
+	"\fbind_address\x18\x02 \x01(\tR\vbindAddress\x12%\n" +
+	"\x0erequested_port\x18\x03 \x01(\rR\rrequestedPort\"w\n" +
+	"\x11HandshakeResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12#\n" +
 	"\rerror_message\x18\x02 \x01(\tR\ferrorMessage\x12#\n" +
-	"\rassigned_port\x18\x03 \x01(\rR\fassignedPort\"Z\n" +
+	"\rassigned_port\x18\x03 \x01(\rR\fassignedPort\";\n" +
+	"\x12EventStreamRequest\x12%\n" +
+	"\x0elistening_port\x18\x01 \x01(\rR\rlisteningPort\"Z\n" +
 	"\x12NewConnectionEvent\x12#\n" +
 	"\rconnection_id\x18\x01 \x01(\tR\fconnectionId\x12\x1f\n" +
 	"\vremote_addr\x18\x02 \x01(\tR\n" +
-	"remoteAddr\"0\n" +
-	"\tAcceptAck\x12#\n" +
-	"\rconnection_id\x18\x01 \x01(\tR\fconnectionId\"K\n" +
+	"remoteAddr\"K\n" +
 	"\n" +
 	"DataPacket\x12#\n" +
 	"\rconnection_id\x18\x01 \x01(\tR\fconnectionId\x12\x18\n" +
-	"\apayload\x18\x02 \x01(\fR\apayload2\xa4\x01\n" +
-	"\fProxyService\x12V\n" +
-	"\x0eControlChannel\x12\x1f.tunnel.v1.ClientControlMessage\x1a\x1f.tunnel.v1.ServerControlMessage(\x010\x01\x12<\n" +
-	"\bDataPipe\x12\x15.tunnel.v1.DataPacket\x1a\x15.tunnel.v1.DataPacket(\x010\x01B\x14Z\x12tunnel/v1;tunnelv1b\x06proto3"
+	"\apayload\x18\x02 \x01(\fR\apayload2\xed\x01\n" +
+	"\rTunnelService\x12J\n" +
+	"\rRegisterProxy\x12\x1b.tunnel.v1.HandshakeRequest\x1a\x1c.tunnel.v1.HandshakeResponse\x12N\n" +
+	"\fListenEvents\x12\x1d.tunnel.v1.EventStreamRequest\x1a\x1d.tunnel.v1.NewConnectionEvent0\x01\x12@\n" +
+	"\fOpenDataPipe\x12\x15.tunnel.v1.DataPacket\x1a\x15.tunnel.v1.DataPacket(\x010\x01B\x14Z\x12tunnel/v1;tunnelv1b\x06proto3"
 
 var (
 	file_tunnel_v1_tunnel_proto_rawDescOnce sync.Once
@@ -495,30 +335,26 @@ func file_tunnel_v1_tunnel_proto_rawDescGZIP() []byte {
 	return file_tunnel_v1_tunnel_proto_rawDescData
 }
 
-var file_tunnel_v1_tunnel_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
+var file_tunnel_v1_tunnel_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
 var file_tunnel_v1_tunnel_proto_goTypes = []any{
-	(*ClientControlMessage)(nil), // 0: tunnel.v1.ClientControlMessage
-	(*ServerControlMessage)(nil), // 1: tunnel.v1.ServerControlMessage
-	(*HelloRequest)(nil),         // 2: tunnel.v1.HelloRequest
-	(*HelloResponse)(nil),        // 3: tunnel.v1.HelloResponse
-	(*NewConnectionEvent)(nil),   // 4: tunnel.v1.NewConnectionEvent
-	(*AcceptAck)(nil),            // 5: tunnel.v1.AcceptAck
-	(*DataPacket)(nil),           // 6: tunnel.v1.DataPacket
+	(*HandshakeRequest)(nil),   // 0: tunnel.v1.HandshakeRequest
+	(*HandshakeResponse)(nil),  // 1: tunnel.v1.HandshakeResponse
+	(*EventStreamRequest)(nil), // 2: tunnel.v1.EventStreamRequest
+	(*NewConnectionEvent)(nil), // 3: tunnel.v1.NewConnectionEvent
+	(*DataPacket)(nil),         // 4: tunnel.v1.DataPacket
 }
 var file_tunnel_v1_tunnel_proto_depIdxs = []int32{
-	2, // 0: tunnel.v1.ClientControlMessage.hello:type_name -> tunnel.v1.HelloRequest
-	5, // 1: tunnel.v1.ClientControlMessage.accept_ack:type_name -> tunnel.v1.AcceptAck
-	3, // 2: tunnel.v1.ServerControlMessage.hello_response:type_name -> tunnel.v1.HelloResponse
-	4, // 3: tunnel.v1.ServerControlMessage.new_connection:type_name -> tunnel.v1.NewConnectionEvent
-	0, // 4: tunnel.v1.ProxyService.ControlChannel:input_type -> tunnel.v1.ClientControlMessage
-	6, // 5: tunnel.v1.ProxyService.DataPipe:input_type -> tunnel.v1.DataPacket
-	1, // 6: tunnel.v1.ProxyService.ControlChannel:output_type -> tunnel.v1.ServerControlMessage
-	6, // 7: tunnel.v1.ProxyService.DataPipe:output_type -> tunnel.v1.DataPacket
-	6, // [6:8] is the sub-list for method output_type
-	4, // [4:6] is the sub-list for method input_type
-	4, // [4:4] is the sub-list for extension type_name
-	4, // [4:4] is the sub-list for extension extendee
-	0, // [0:4] is the sub-list for field type_name
+	0, // 0: tunnel.v1.TunnelService.RegisterProxy:input_type -> tunnel.v1.HandshakeRequest
+	2, // 1: tunnel.v1.TunnelService.ListenEvents:input_type -> tunnel.v1.EventStreamRequest
+	4, // 2: tunnel.v1.TunnelService.OpenDataPipe:input_type -> tunnel.v1.DataPacket
+	1, // 3: tunnel.v1.TunnelService.RegisterProxy:output_type -> tunnel.v1.HandshakeResponse
+	3, // 4: tunnel.v1.TunnelService.ListenEvents:output_type -> tunnel.v1.NewConnectionEvent
+	4, // 5: tunnel.v1.TunnelService.OpenDataPipe:output_type -> tunnel.v1.DataPacket
+	3, // [3:6] is the sub-list for method output_type
+	0, // [0:3] is the sub-list for method input_type
+	0, // [0:0] is the sub-list for extension type_name
+	0, // [0:0] is the sub-list for extension extendee
+	0, // [0:0] is the sub-list for field type_name
 }
 
 func init() { file_tunnel_v1_tunnel_proto_init() }
@@ -526,21 +362,13 @@ func file_tunnel_v1_tunnel_proto_init() {
 	if File_tunnel_v1_tunnel_proto != nil {
 		return
 	}
-	file_tunnel_v1_tunnel_proto_msgTypes[0].OneofWrappers = []any{
-		(*ClientControlMessage_Hello)(nil),
-		(*ClientControlMessage_AcceptAck)(nil),
-	}
-	file_tunnel_v1_tunnel_proto_msgTypes[1].OneofWrappers = []any{
-		(*ServerControlMessage_HelloResponse)(nil),
-		(*ServerControlMessage_NewConnection)(nil),
-	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_tunnel_v1_tunnel_proto_rawDesc), len(file_tunnel_v1_tunnel_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   7,
+			NumMessages:   5,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
