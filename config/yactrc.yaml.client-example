@@ -1,0 +1,9 @@
+tls_config:
+  ca_path: ./config/certs/ca/ca.crt
+  cert_path: ./config/certs/client/client.crt
+  key_path:  ./config/certs/client/client.key
+
+proxy_addr: ":8008"        # address of the proxy server.
+
+# address for proxy to listen to and tunnel traffic for. Eg. foobar.com:440 or :443.
+to_addr: ":443"

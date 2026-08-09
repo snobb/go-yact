@@ -75,11 +75,16 @@ func handleProxy(logger logger.Logger, args []string) (Action, error) { //nolint
 
 	cfg := proxy.Config{}
 
-	fs.StringVar(&cfg.TLS.CAPath, "ca", "", "CA certificate path")
-	fs.StringVar(&cfg.TLS.CertPath, "cert", "", "TLS certificate path")
-	fs.StringVar(&cfg.TLS.KeyPath, "key", "", "TLS key path")
+	if err := config.Load(&cfg); err != nil {
+		return nil, err
+	}
+	cfg.SetDefaults()
 
-	fs.StringVar(&cfg.ProxyAddr, "addr", ":8008", "address to listen on")
+	fs.StringVar(&cfg.TLS.CAPath, "ca", cfg.TLS.CAPath, "CA certificate path")
+	fs.StringVar(&cfg.TLS.CertPath, "cert", cfg.TLS.CertPath, "TLS certificate path")
+	fs.StringVar(&cfg.TLS.KeyPath, "key", cfg.TLS.KeyPath, "TLS key path")
+
+	fs.StringVar(&cfg.ProxyAddr, "addr", cfg.ProxyAddr, "address to listen on")
 
 	fs.DurationVar(&cfg.KeepAliveInterval, "i", proxy.DefaultKeepAliveInterval, "keep-alive interval")
 	fs.DurationVar(&cfg.KeepAliveTimeout, "t", proxy.DefaultKeepAliveTimeout, "keep-alive timeout")
@@ -95,10 +100,6 @@ func handleProxy(logger logger.Logger, args []string) (Action, error) { //nolint
 	}
 
 	if err := fs.Parse(args); err != nil {
-		return nil, err
-	}
-
-	if err := config.Load(&cfg); err != nil {
 		return nil, err
 	}
 
@@ -120,11 +121,21 @@ func handleClient(logger logger.Logger, args []string) (Action, error) { //nolin
 
 	cfg := client.Config{}
 
-	fs.StringVar(&cfg.TLS.CAPath, "ca", "", "CA certificate path")
-	fs.StringVar(&cfg.TLS.CertPath, "cert", "", "TLS certificate path")
-	fs.StringVar(&cfg.TLS.KeyPath, "key", "", "TLS key path")
+	if err := config.Load(&cfg); err != nil {
+		return nil, err
+	}
 
-	fs.StringVar(&cfg.ProxyAddr, "addr", ":8008", "address of proxy to listen to")
+	cfg.SetDefaults()
+
+	fs.StringVar(&cfg.TLS.CAPath, "ca", cfg.TLS.CAPath, "CA certificate path")
+	fs.StringVar(&cfg.TLS.CertPath, "cert", cfg.TLS.CertPath, "TLS certificate path")
+	fs.StringVar(&cfg.TLS.KeyPath, "key", cfg.TLS.KeyPath, "TLS key path")
+
+	fs.StringVar(&cfg.ProxyAddr, "addr", cfg.ProxyAddr, "address of proxy to connect to")
+	fs.StringVar(&cfg.ToAddr, "to", cfg.ToAddr, "address to tunnel connections from")
+
+	fs.DurationVar(&cfg.KeepAliveInterval, "i", client.DefaultKeepAliveInterval, "keep-alive interval")
+	fs.DurationVar(&cfg.KeepAliveTimeout, "t", client.DefaultKeepAliveTimeout, "keep-alive timeout")
 
 	fs.Usage = func() {
 		fs.SetOutput(os.Stdout)
@@ -133,14 +144,10 @@ func handleClient(logger logger.Logger, args []string) (Action, error) { //nolin
 		fmt.Printf("Usage: %s [global flags] client [args]\n", command)
 		fs.PrintDefaults()
 		fmt.Println("\nEnvironment variables can be provided:")
-		envconfig.Usage(config.EnvVarPrefix, &cfg)
+		_ = envconfig.Usage(config.EnvVarPrefix, &cfg)
 	}
 
 	if err := fs.Parse(args); err != nil {
-		return nil, err
-	}
-
-	if err := config.Load(&cfg); err != nil {
 		return nil, err
 	}
 
