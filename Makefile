@@ -97,10 +97,10 @@ create-tls-ca: make-cert-dir ## Create mTLS CA
 
 .PHONY: create-tls-client-cert
 create-tls-client-cert: ## Create mTLS client cert
-	CAROOT=${CAROOT} mkcert -client \
+	CAROOT=${CAROOT} set +x && mkcert -client \
 		-cert-file ${CLIENT_TLS_DIR}/client.crt \
 		-key-file ${CLIENT_TLS_DIR}/client.key \
-		client
+		client snobb.org
 
 .PHONY: create-tls-server-cert
 create-tls-server-cert: ## Create mTLS server cert

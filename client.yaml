@@ -1,0 +1,6 @@
+tls_config:
+  ca_path:   ./config/certs/ca/rootCA.pem
+  cert_path: ./config/certs/client/client.crt
+  key_path:  ./config/certs/client/client.key
+proxy_addr: "localhost:8008"
+to_addr: ":4443"

@@ -3,6 +3,7 @@ module github.com/snobb/go-yact
 go 1.26.5
 
 require (
+	github.com/google/uuid v1.6.0
 	github.com/kelseyhightower/envconfig v1.4.0
 	go.yaml.in/yaml/v2 v2.4.4
 	google.golang.org/grpc v1.83.0

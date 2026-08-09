@@ -75,7 +75,7 @@ option go_package = "tunnel/v1;tunnelv1";
 //
 service TunnelService {
   // RegisterProxy registers proxy listeners on the server.
-  rpc RegisterProxy (HandshakeRequest) returns (HandshakeResponse);
+  rpc RegisterProxy (RegisterProxyRequest) returns (RegisterProxyResponse);
 
   // ListenEvents subscribes client for the new connection events.
   rpc ListenEvents (EventStreamRequest) returns (stream NewConnectionEvent);
@@ -84,26 +84,23 @@ service TunnelService {
   rpc OpenDataPipe (stream DataPacket) returns (stream DataPacket);
 }
 
-message HandshakeRequest {
+message RegisterProxyRequest {
   string secret = 1;
 
-  // The local IP address on the server to bind to (e.g., "0.0.0.0", "127.0.0.1", "::")
+  // The local IP address on the server to bind to (e.g., "0.0.0.0:443", "127.0.0.1", "::", ":443")
   // If empty,  server defaults to "0.0.0.0"
   string bind_address = 2;
-
-  // Requested listener port (e.g., 8080). Use 0 for dynamic/random port assignment.
-  uint32 requested_port = 3;
 }
 
-message HandshakeResponse {
-  bool success = 1;
-  string error_message = 2;
-  uint32 assigned_port = 3;
+message RegisterProxyResponse {
+  string address = 1;
+  // bool success = 2;
+  // string error_message = 3;
 }
 
 message EventStreamRequest {
   // Can carry session token/auth verified from RegisterProxy
-  uint32 listening_port = 1;
+  string listener_address = 1;
 }
 
 message NewConnectionEvent {

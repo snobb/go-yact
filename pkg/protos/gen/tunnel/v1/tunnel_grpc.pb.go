@@ -100,7 +100,7 @@ const (
 // ============================================================================
 type TunnelServiceClient interface {
 	// RegisterProxy registers proxy listeners on the server.
-	RegisterProxy(ctx context.Context, in *HandshakeRequest, opts ...grpc.CallOption) (*HandshakeResponse, error)
+	RegisterProxy(ctx context.Context, in *RegisterProxyRequest, opts ...grpc.CallOption) (*RegisterProxyResponse, error)
 	// ListenEvents subscribes client for the new connection events.
 	ListenEvents(ctx context.Context, in *EventStreamRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[NewConnectionEvent], error)
 	// OpenDataPipe initiates a bi-directional data stream bound to a specific connection_id.
@@ -115,9 +115,9 @@ func NewTunnelServiceClient(cc grpc.ClientConnInterface) TunnelServiceClient {
 	return &tunnelServiceClient{cc}
 }
 
-func (c *tunnelServiceClient) RegisterProxy(ctx context.Context, in *HandshakeRequest, opts ...grpc.CallOption) (*HandshakeResponse, error) {
+func (c *tunnelServiceClient) RegisterProxy(ctx context.Context, in *RegisterProxyRequest, opts ...grpc.CallOption) (*RegisterProxyResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(HandshakeResponse)
+	out := new(RegisterProxyResponse)
 	err := c.cc.Invoke(ctx, TunnelService_RegisterProxy_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -233,7 +233,7 @@ type TunnelService_OpenDataPipeClient = grpc.BidiStreamingClient[DataPacket, Dat
 // ============================================================================
 type TunnelServiceServer interface {
 	// RegisterProxy registers proxy listeners on the server.
-	RegisterProxy(context.Context, *HandshakeRequest) (*HandshakeResponse, error)
+	RegisterProxy(context.Context, *RegisterProxyRequest) (*RegisterProxyResponse, error)
 	// ListenEvents subscribes client for the new connection events.
 	ListenEvents(*EventStreamRequest, grpc.ServerStreamingServer[NewConnectionEvent]) error
 	// OpenDataPipe initiates a bi-directional data stream bound to a specific connection_id.
@@ -248,7 +248,7 @@ type TunnelServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedTunnelServiceServer struct{}
 
-func (UnimplementedTunnelServiceServer) RegisterProxy(context.Context, *HandshakeRequest) (*HandshakeResponse, error) {
+func (UnimplementedTunnelServiceServer) RegisterProxy(context.Context, *RegisterProxyRequest) (*RegisterProxyResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method RegisterProxy not implemented")
 }
 func (UnimplementedTunnelServiceServer) ListenEvents(*EventStreamRequest, grpc.ServerStreamingServer[NewConnectionEvent]) error {
@@ -279,7 +279,7 @@ func RegisterTunnelServiceServer(s grpc.ServiceRegistrar, srv TunnelServiceServe
 }
 
 func _TunnelService_RegisterProxy_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(HandshakeRequest)
+	in := new(RegisterProxyRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -291,7 +291,7 @@ func _TunnelService_RegisterProxy_Handler(srv interface{}, ctx context.Context, 
 		FullMethod: TunnelService_RegisterProxy_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(TunnelServiceServer).RegisterProxy(ctx, req.(*HandshakeRequest))
+		return srv.(TunnelServiceServer).RegisterProxy(ctx, req.(*RegisterProxyRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }

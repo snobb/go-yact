@@ -3,14 +3,13 @@ package config
 import (
 	"fmt"
 	"os"
-	"path"
 
 	"github.com/kelseyhightower/envconfig"
 	"go.yaml.in/yaml/v2"
 )
 
 const (
-	configFileName = "yactrc.yaml"
+	ConfigFileName = "yactrc.yaml"
 	EnvVarPrefix   = "YACT_"
 )
 
@@ -18,13 +17,7 @@ var (
 	envconfigProcessFunc = envconfig.Process
 	osReadFileFunc       = os.ReadFile
 	yamlUnmarshalFunc    = yaml.Unmarshal
-
-	searchDirs []string
 )
-
-func init() {
-	searchDirs = getSearchDirs()
-}
 
 // Configer represents a valid configuration object.
 type Configer interface {
@@ -32,13 +25,10 @@ type Configer interface {
 }
 
 // Load loads config file into the provided configuration struct.
-func Load[T Configer](cfg *T) error {
-	for _, dir := range searchDirs {
-		file := path.Join(dir, configFileName)
-		if _, err := os.Stat(file); err == nil {
-			if err := loadFile(file, cfg); err != nil {
-				return fmt.Errorf("unable to load %q config file > %w", file, err)
-			}
+func Load[T Configer](configPath string, cfg *T) error {
+	if _, err := os.Stat(configPath); err == nil {
+		if err := loadFile(configPath, cfg); err != nil {
+			return fmt.Errorf("unable to load %q config file > %w", configPath, err)
 		}
 	}
 
@@ -58,22 +48,4 @@ func loadFile[T Configer](fileName string, cfg *T) error {
 	}
 
 	return yamlUnmarshalFunc(data, cfg)
-}
-
-// so far only unix-like systems are supported.
-func getHomeDir() string {
-	return os.Getenv("HOME")
-}
-
-func getSearchDirs() []string {
-	dirs := []string{}
-
-	path, err := os.Getwd()
-	if err == nil {
-		dirs = append(dirs, path)
-	}
-
-	dirs = append(dirs, getHomeDir(), "/etc")
-
-	return dirs
 }

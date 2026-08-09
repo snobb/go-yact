@@ -9,6 +9,7 @@ import (
 	"os"
 
 	"github.com/kelseyhightower/envconfig"
+
 	"github.com/snobb/go-yact/internal/client"
 	"github.com/snobb/go-yact/internal/config"
 	"github.com/snobb/go-yact/internal/logger"
@@ -40,7 +41,10 @@ func parseArgs() (Action, error) {
 	}
 
 	var debug bool
+	var configPath string
+
 	global.BoolVar(&debug, "d", false, "debug output")
+	global.StringVar(&configPath, "c", config.ConfigFileName, "config file")
 
 	err := global.Parse(os.Args[1:])
 	if err != nil {
@@ -60,22 +64,22 @@ func parseArgs() (Action, error) {
 
 	switch subCommand {
 	case "proxy":
-		return handleProxy(logger, subCommandArgs)
+		return handleProxy(logger, configPath, subCommandArgs)
 	case "client":
-		return handleClient(logger, subCommandArgs)
+		return handleClient(logger, configPath, subCommandArgs)
 	default:
 		global.Usage()
 		return nil, fmt.Errorf("unknown command: %s", subCommand)
 	}
 }
 
-func handleProxy(logger logger.Logger, args []string) (Action, error) { //nolint:dupl
+func handleProxy(logger logger.Logger, configPath string, args []string) (Action, error) { //nolint:dupl
 	fs := flag.NewFlagSet("proxy", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 
 	cfg := proxy.Config{}
 
-	if err := config.Load(&cfg); err != nil {
+	if err := config.Load(configPath, &cfg); err != nil {
 		return nil, err
 	}
 	cfg.SetDefaults()
@@ -111,17 +115,17 @@ func handleProxy(logger logger.Logger, args []string) (Action, error) { //nolint
 
 	return Action(func(ctx context.Context) error {
 		logger.DebugContext(ctx, "config", "config", cfg)
-		return proxy.Run(ctx, logger, cfg.ProxyAddr)
+		return proxy.Run(ctx, logger, &cfg)
 	}), nil
 }
 
-func handleClient(logger logger.Logger, args []string) (Action, error) { //nolint:dupl
+func handleClient(logger logger.Logger, configPath string, args []string) (Action, error) { //nolint:dupl
 	fs := flag.NewFlagSet("client", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 
 	cfg := client.Config{}
 
-	if err := config.Load(&cfg); err != nil {
+	if err := config.Load(configPath, &cfg); err != nil {
 		return nil, err
 	}
 
@@ -133,6 +137,7 @@ func handleClient(logger logger.Logger, args []string) (Action, error) { //nolin
 
 	fs.StringVar(&cfg.ProxyAddr, "addr", cfg.ProxyAddr, "address of proxy to connect to")
 	fs.StringVar(&cfg.ToAddr, "to", cfg.ToAddr, "address to tunnel connections from")
+	fs.IntVar(&cfg.LocalPort, "local_port", cfg.LocalPort, "port to local connection")
 
 	fs.DurationVar(&cfg.KeepAliveInterval, "i", client.DefaultKeepAliveInterval, "keep-alive interval")
 	fs.DurationVar(&cfg.KeepAliveTimeout, "t", client.DefaultKeepAliveTimeout, "keep-alive timeout")
@@ -151,13 +156,9 @@ func handleClient(logger logger.Logger, args []string) (Action, error) { //nolin
 		return nil, err
 	}
 
-	if err := cfg.Validate(); err != nil {
-		return nil, err
-	}
-
 	return Action(func(ctx context.Context) error {
 		logger.DebugContext(ctx, "config", "config", cfg)
-		return client.Run(ctx, logger, cfg.ProxyAddr)
+		return client.Run(ctx, logger, &cfg)
 	}), nil
 }
 

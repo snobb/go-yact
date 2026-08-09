@@ -1,74 +1,193 @@
-// Package client provides client.
 package client
 
 import (
-	"crypto/tls"
-	"crypto/x509"
+	"context"
+	"errors"
 	"fmt"
-	"os"
-	"time"
+	"io"
+	"log/slog"
+	"net"
+	"sync"
 
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/keepalive"
+
+	"github.com/snobb/go-yact/internal/logger"
+
+	pb "github.com/snobb/go-yact/pkg/protos/gen/tunnel/v1"
 )
 
-const (
-	DefaultKeepAliveInterval = 20 * time.Second
-	DefaultKeepAliveTimeout  = 5 * time.Second
-)
+type Client struct {
+	logger  logger.Logger
+	address string
 
-func makeServerConn(cfg *Config) (*grpc.ClientConn, func(), error) {
-	if err := cfg.Validate(); err != nil {
-		return nil, nil, err
-	}
-
-	tc, err := initCredentials(cfg)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	opts := []grpc.DialOption{
-		grpc.WithTransportCredentials(tc),
-		grpc.WithKeepaliveParams(keepalive.ClientParameters{
-			Time:    DefaultKeepAliveInterval,
-			Timeout: DefaultKeepAliveTimeout,
-		}),
-	}
-
-	conn, err := grpc.NewClient(cfg.ProxyAddr, opts...)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	cleanup := func() {
-		_ = conn.Close()
-	}
-
-	return conn, cleanup, nil
+	grpcClient pb.TunnelServiceClient
 }
 
-func initCredentials(cfg *Config) (credentials.TransportCredentials, error) {
-	caCert, err := os.ReadFile(cfg.TLS.CAPath)
+func NewClient(logger logger.Logger, grpcClient pb.TunnelServiceClient, addr string) *Client {
+	return &Client{
+		logger:     logger,
+		address:    addr,
+		grpcClient: grpcClient,
+	}
+}
+
+func (c *Client) Run(ctx context.Context, localPort int) error {
+	// register Listener
+	registerProxyRequest := &pb.RegisterProxyRequest{BindAddress: c.address}
+
+	registerProxyResponse, err := c.grpcClient.RegisterProxy(ctx, registerProxyRequest)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	caCertPool := x509.NewCertPool()
-	if !caCertPool.AppendCertsFromPEM(caCert) {
-		return nil, fmt.Errorf("failed to append CA certificate")
+	c.logger.DebugContext(ctx, "registered proxy listener", "address", registerProxyResponse.Address)
+
+	eventStreamRequest := pb.EventStreamRequest{
+		ListenerAddress: registerProxyResponse.Address,
 	}
 
-	serverCert, err := tls.LoadX509KeyPair(cfg.TLS.CertPath, cfg.TLS.KeyPath)
+	eventStream, err := c.grpcClient.ListenEvents(ctx, &eventStreamRequest)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	tc := credentials.NewTLS(&tls.Config{
-		Certificates: []tls.Certificate{serverCert},
-		RootCAs:      caCertPool,
-		MinVersion:   tls.VersionTLS13,
-	})
+	for {
+		select {
+		case <-ctx.Done():
+			c.logger.DebugContext(ctx, "client canceled by context")
+			return nil
+		default:
+		}
 
-	return tc, nil
+		event, err := eventStream.Recv()
+		if err != nil {
+			return err
+		}
+
+		go c.handleConnectionEvent(ctx, localPort, event)
+	}
+}
+
+func (c *Client) handleConnectionEvent(ctx context.Context, localPort int, event *pb.NewConnectionEvent) {
+	logCtx := logger.WithAttrs(ctx,
+		slog.String("connection_id", event.ConnectionId),
+		slog.String("remote_addr", event.RemoteAddr))
+
+	c.logger.DebugContext(logCtx, "new connection event received")
+
+	conn, err := makeLocalConn(ctx, localPort)
+	if err != nil {
+		c.logger.ErrorContext(logCtx, "failed to create local connection", "error", err)
+		return
+	}
+	defer conn.Close()
+
+	stream, err := c.grpcClient.OpenDataPipe(ctx)
+	if err != nil {
+		c.logger.ErrorContext(logCtx, "failed to open data pipe", "error", err)
+		return
+	}
+
+	packet := &pb.DataPacket{ConnectionId: event.ConnectionId}
+
+	if err := stream.Send(packet); err != nil {
+		c.logger.ErrorContext(logCtx, "failed to send packet", "error", err)
+		return
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	go c.receivePackets(logCtx, &wg, conn, stream)
+	go func() {
+		c.sendPackets(logCtx, &wg, conn, stream)
+		_ = stream.CloseSend()
+	}()
+
+	wg.Wait()
+}
+
+func (c *Client) receivePackets(
+	ctx context.Context,
+	wg *sync.WaitGroup,
+	conn net.Conn,
+	stream grpc.BidiStreamingClient[pb.DataPacket, pb.DataPacket],
+) {
+	defer wg.Done()
+	defer conn.Close()
+
+	for {
+		select {
+		case <-ctx.Done():
+			c.logger.DebugContext(ctx, "data pipe canceled by context")
+			return
+		default:
+		}
+
+		packet, err := stream.Recv()
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				c.logger.DebugContext(ctx, "connection closed")
+			} else {
+				c.logger.ErrorContext(ctx, "failed to receive packet", "error", err)
+			}
+			return
+		}
+
+		if len(packet.Payload) > 0 {
+			if _, err := conn.Write(packet.Payload); err != nil {
+				c.logger.ErrorContext(ctx, "failed to write packet payload", "error", err)
+				return
+			}
+		}
+	}
+}
+
+func (c *Client) sendPackets(
+	ctx context.Context,
+	wg *sync.WaitGroup,
+	conn net.Conn,
+	stream grpc.BidiStreamingClient[pb.DataPacket, pb.DataPacket],
+) {
+	defer wg.Done()
+	defer conn.Close()
+
+	buf := make([]byte, bufferSize)
+
+	for {
+		select {
+		case <-ctx.Done():
+			c.logger.DebugContext(ctx, "data pipe canceled by context")
+			return
+		default:
+		}
+
+		n, err := conn.Read(buf)
+		if err != nil {
+			if errors.Is(err, io.EOF) || errors.Is(err, net.ErrClosed) {
+				c.logger.DebugContext(ctx, "local socket closed")
+			} else {
+				c.logger.ErrorContext(ctx, "failed to read from loocal socket", "error", err)
+			}
+			return
+		}
+
+		if n == 0 {
+			continue
+		}
+
+		payloadCopy := make([]byte, n)
+		copy(payloadCopy, buf[:n])
+
+		packet := &pb.DataPacket{Payload: payloadCopy}
+
+		if err := stream.Send(packet); err != nil {
+			c.logger.ErrorContext(ctx, "failed to send packet", "error", err)
+			return
+		}
+	}
+}
+
+func makeLocalConn(ctx context.Context, port int) (net.Conn, error) {
+	return net.Dial("tcp", fmt.Sprintf("localhost:%d", port))
 }

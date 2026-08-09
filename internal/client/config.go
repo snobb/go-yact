@@ -2,6 +2,8 @@ package client
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/snobb/go-yact/internal/config"
@@ -18,6 +20,7 @@ type Config struct {
 	TLS       config.TLSConfig `envconfig:"tls_config" yaml:"tls_config"`
 	ProxyAddr string           `envconfig:"proxy_addr" yaml:"proxy_addr"`
 	ToAddr    string           `envconfig:"to_addr" yaml:"to_addr"`
+	LocalPort int              `envconfig:"local_portr" yaml:"local_port"`
 
 	KeepAliveInterval time.Duration `envconfig:"keep_alive_interval" yaml:"keep_alive_interval"`
 	KeepAliveTimeout  time.Duration `envconfig:"keep_alive_timeout" yaml:"keep_alive_timeout"`
@@ -44,6 +47,11 @@ func (c *Config) SetDefaults() {
 
 	if c.ToAddr == "" {
 		c.ToAddr = ":443"
+	}
+
+	if c.LocalPort == 0 {
+		addrTokens := strings.Split(c.ToAddr, ":")
+		c.LocalPort, _ = strconv.Atoi(addrTokens[1])
 	}
 
 	if c.KeepAliveInterval == 0 {
