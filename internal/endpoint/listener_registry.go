@@ -16,8 +16,9 @@ var (
 
 // ListenerRegistry represents a collection of listeners on the proxy server.
 type ListenerRegistry struct {
-	listenerMU sync.RWMutex
-	listeners  map[string]*ProxyListener
+	listenerMU          sync.RWMutex
+	listenersByAddress  map[string]*ProxyListener
+	listenersByClientID map[string]*ProxyListener
 
 	connMU       sync.RWMutex
 	pendingConns map[string]*ProxyConn
@@ -26,7 +27,8 @@ type ListenerRegistry struct {
 // NewRegistry creates a new Registry.
 func NewRegistry() *ListenerRegistry {
 	return &ListenerRegistry{
-		listeners: make(map[string]*ProxyListener),
+		listenersByAddress:  make(map[string]*ProxyListener),
+		listenersByClientID: make(map[string]*ProxyListener),
 	}
 }
 
@@ -35,17 +37,18 @@ func (r *ListenerRegistry) Register(ctx context.Context, address, ownerID string
 	r.listenerMU.Lock()
 	defer r.listenerMU.Unlock()
 
-	if _, ok := r.listeners[address]; ok {
+	if _, ok := r.listenersByAddress[address]; ok {
 		return ErrListenerExists
 	}
 
 	listener := NewListener(ctx, address, ownerID)
 
-	r.listeners[address] = listener
-
 	if err := listener.Listen(ctx, onNewConn); err != nil {
 		return err
 	}
+
+	r.listenersByAddress[address] = listener
+	r.listenersByClientID[ownerID] = listener
 
 	return nil
 }
@@ -55,7 +58,7 @@ func (r *ListenerRegistry) GetListenerByAddress(address string) (*ProxyListener,
 	r.listenerMU.RLock()
 	defer r.listenerMU.RUnlock()
 
-	listener, ok := r.listeners[address]
+	listener, ok := r.listenersByAddress[address]
 	if !ok {
 		return nil, ErrListenerNotFound
 	}
@@ -66,5 +69,21 @@ func (r *ListenerRegistry) GetListenerByAddress(address string) (*ProxyListener,
 func (r *ListenerRegistry) RemoveListenerByAddress(address string) {
 	r.listenerMU.Lock()
 	defer r.listenerMU.Unlock()
-	delete(r.listeners, address)
+	delete(r.listenersByAddress, address)
+}
+
+func (r *ListenerRegistry) RemoveListenerByClientID(clientID string) {
+	r.listenerMU.Lock()
+	defer r.listenerMU.Unlock()
+
+	listener, ok := r.listenersByClientID[clientID]
+	if !ok {
+		return
+	}
+
+	listener.Close()
+
+	delete(r.listenersByClientID, clientID)
+	delete(r.listenersByAddress, listener.Address())
+
 }

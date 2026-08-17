@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"syscall"
 )
 
 func main() {
@@ -26,7 +27,8 @@ func run() error {
 		return err
 	}
 
-	ctx, cancel := signal.NotifyContext(context.Background())
+	ctx, cancel := signal.NotifyContext(context.Background(),
+		os.Interrupt, syscall.SIGTERM, syscall.SIGINT)
 	defer cancel()
 
 	return action(ctx)

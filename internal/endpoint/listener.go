@@ -48,12 +48,7 @@ func (l *ProxyListener) Listen(ctx context.Context, onNewConn OnNewConnectionFun
 		return err
 	}
 
-	l.eventChan = make(chan *pb.NewConnectionEvent, EventBufferSize)
-
-	cancelCtx, cancelFunc := context.WithCancel(ctx)
-	l.cancelFunc = cancelFunc
-
-	go l.createListenLoop(cancelCtx, listener, onNewConn)
+	go l.createListenLoop(ctx, listener, onNewConn)
 
 	return nil
 }
@@ -69,10 +64,14 @@ func (l *ProxyListener) EventChannel() <-chan *pb.NewConnectionEvent {
 }
 
 func (l *ProxyListener) createListenLoop(ctx context.Context, rawListener net.Listener, onNewConn OnNewConnectionFunc) {
+	l.eventChan = make(chan *pb.NewConnectionEvent, EventBufferSize)
 	defer close(l.eventChan)
 
+	cancelCtx, cancelFunc := context.WithCancel(ctx)
+	l.cancelFunc = cancelFunc
+
 	go func() {
-		<-ctx.Done()
+		<-cancelCtx.Done()
 		_ = rawListener.Close()
 	}()
 
@@ -102,7 +101,7 @@ func (l *ProxyListener) createListenLoop(ctx context.Context, rawListener net.Li
 		select {
 		case l.eventChan <- event:
 		// Send event to gRPC stream
-		case <-ctx.Done():
+		case <-cancelCtx.Done():
 			return
 		}
 	}

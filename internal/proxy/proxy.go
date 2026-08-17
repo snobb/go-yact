@@ -5,9 +5,6 @@ import (
 	"context"
 	"log/slog"
 	"net"
-	"os"
-	"os/signal"
-	"syscall"
 	"time"
 
 	"google.golang.org/grpc"
@@ -19,13 +16,6 @@ import (
 // Run starts the proxy server.
 func Run(ctx context.Context, log logger.Logger, cfg *Config) error {
 	log.InfoContext(ctx, "starting proxy", "addr", cfg.ProxyAddr)
-
-	ctx, cancel := signal.NotifyContext(context.Background(),
-		os.Interrupt,
-		syscall.SIGTERM,
-		syscall.SIGINT,
-	)
-	defer cancel()
 
 	logCtx := logger.WithAttrs(ctx,
 		slog.String("proxy_addr", cfg.ProxyAddr),
@@ -49,7 +39,7 @@ func Run(ctx context.Context, log logger.Logger, cfg *Config) error {
 		cfg.KeepAliveTimeout,
 	)
 
-	pb.RegisterTunnelServiceServer(grpcServer, NewServer(log))
+	pb.RegisterTunnelServiceServer(grpcServer, NewServer(logCtx, log))
 
 	go func() {
 		log.InfoContext(logCtx, "server started")

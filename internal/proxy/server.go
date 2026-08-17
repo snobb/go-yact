@@ -25,7 +25,8 @@ const bufferSize = 32 * 1024
 
 // Server represents a WorkerService GRPC server
 type Server struct {
-	logger logger.Logger
+	serverCtx context.Context
+	logger    logger.Logger
 
 	listenerRegistry *endpoint.ListenerRegistry
 	connRegistry     *endpoint.ConnRegistry
@@ -34,8 +35,9 @@ type Server struct {
 }
 
 // NewServer creates a new workerService GRPC server
-func NewServer(logger logger.Logger) *Server {
+func NewServer(ctx context.Context, logger logger.Logger) *Server {
 	return &Server{
+		serverCtx:        ctx,
 		logger:           logger,
 		listenerRegistry: endpoint.NewRegistry(),
 		connRegistry:     endpoint.NewConnRegistry(),
@@ -70,7 +72,7 @@ func (s *Server) RegisterProxy(ctx context.Context, handshakeRequest *pb.Registe
 		})
 	}
 
-	if err := s.listenerRegistry.Register(ctx, bindAddress, clientID, onNewConnection); err != nil {
+	if err := s.listenerRegistry.Register(s.serverCtx, bindAddress, clientID, onNewConnection); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to register proxy listener: %v", err)
 	}
 
@@ -102,6 +104,12 @@ func (s *Server) ListenEvents(eventStreamRequest *pb.EventStreamRequest, stream 
 	}
 
 	s.logger.InfoContext(ctx, "client subscribed to listener events")
+
+	defer func() {
+		// close and clear client's listeners.
+		s.logger.DebugContext(ctx, "removing listeners")
+		s.listenerRegistry.RemoveListenerByClientID(clientID)
+	}()
 
 	for {
 		select {
