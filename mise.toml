@@ -1,7 +1,6 @@
 [tools]
 buf = "latest"
 go = "latest"
-mkcert = "1.4.4"
 protoc = "latest"
 protoc-gen-go = "latest"
 protoc-gen-go-grpc = "latest"
