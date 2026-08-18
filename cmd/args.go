@@ -137,7 +137,7 @@ func handleClient(logger logger.Logger, configPath string, args []string) (Actio
 
 	fs.StringVar(&cfg.ProxyAddr, "addr", cfg.ProxyAddr, "address of proxy to connect to")
 	fs.StringVar(&cfg.ToAddr, "to", cfg.ToAddr, "address to tunnel connections from")
-	fs.IntVar(&cfg.LocalPort, "local_port", cfg.LocalPort, "port to local connection")
+	fs.IntVar(&cfg.LocalPort, "local-port", cfg.LocalPort, "port to local connection")
 
 	fs.DurationVar(&cfg.KeepAliveInterval, "i", client.DefaultKeepAliveInterval, "keep-alive interval")
 	fs.DurationVar(&cfg.KeepAliveTimeout, "t", client.DefaultKeepAliveTimeout, "keep-alive timeout")

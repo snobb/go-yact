@@ -149,16 +149,16 @@ func (s *Server) OpenDataPipe(stream grpc.BidiStreamingServer[pb.DataPacket, pb.
 
 	connectionID := initialPacket.GetConnectionId()
 
-	ctx := logger.WithAttrs(streamCtx,
+	logCtx := logger.WithAttrs(streamCtx,
 		slog.String("client_id", clientID),
 		slog.String("connection_id", connectionID))
 
-	ctx = logger.WithAttrs(ctx,
+	logCtx = logger.WithAttrs(logCtx,
 		slog.String("connection_id", connectionID))
 
 	conn, err := s.connRegistry.ConnByConnectionID(connectionID, clientID)
 	if err != nil {
-		s.logger.ErrorContext(ctx, "failed to find pending connection", "error", err)
+		s.logger.ErrorContext(logCtx, "failed to find pending connection", "error", err)
 		return status.Error(codes.NotFound, "failed to get listener")
 	}
 	defer conn.Close()
@@ -166,7 +166,7 @@ func (s *Server) OpenDataPipe(stream grpc.BidiStreamingServer[pb.DataPacket, pb.
 	if initialPacket.Payload != nil {
 		// if the initial packet contains payload - send it over right away.
 		if n, err := conn.Write(initialPacket.Payload); err != nil {
-			s.logger.ErrorContext(ctx, "failed to write initial packet payload",
+			s.logger.ErrorContext(logCtx, "failed to write initial packet payload",
 				"error", err, "bytes_written", n)
 			return status.Error(codes.Unavailable, "failed to write initial packet payload")
 		}
@@ -175,8 +175,18 @@ func (s *Server) OpenDataPipe(stream grpc.BidiStreamingServer[pb.DataPacket, pb.
 	var wg sync.WaitGroup
 	wg.Add(2)
 
-	go s.receivePackets(ctx, &wg, conn, stream)
-	go s.sendPackets(ctx, &wg, conn, stream)
+	cancelCtx, cancel := context.WithCancel(logCtx)
+	defer cancel()
+
+	go func() {
+		defer cancel()
+		s.receivePackets(cancelCtx, &wg, conn, stream)
+	}()
+
+	go func() {
+		defer cancel()
+		s.sendPackets(cancelCtx, &wg, conn, stream)
+	}()
 
 	wg.Wait()
 

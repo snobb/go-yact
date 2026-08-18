@@ -75,7 +75,7 @@ func (c *Client) handleConnectionEvent(ctx context.Context, localPort int, event
 
 	c.logger.DebugContext(logCtx, "new connection event received")
 
-	conn, err := makeLocalConn(ctx, localPort)
+	conn, err := makeLocalConn(localPort)
 	if err != nil {
 		c.logger.ErrorContext(logCtx, "failed to create local connection", "error", err)
 		return
@@ -98,9 +98,16 @@ func (c *Client) handleConnectionEvent(ctx context.Context, localPort int, event
 	var wg sync.WaitGroup
 	wg.Add(2)
 
-	go c.receivePackets(logCtx, &wg, conn, stream)
+	cancelCtx, cancel := context.WithCancel(logCtx)
+	defer cancel()
+
 	go func() {
-		c.sendPackets(logCtx, &wg, conn, stream)
+		defer cancel()
+		c.receivePackets(cancelCtx, &wg, conn, stream)
+	}()
+	go func() {
+		defer cancel()
+		c.sendPackets(cancelCtx, &wg, conn, stream)
 		_ = stream.CloseSend()
 	}()
 
@@ -167,7 +174,7 @@ func (c *Client) sendPackets(
 			if errors.Is(err, io.EOF) || errors.Is(err, net.ErrClosed) {
 				c.logger.DebugContext(ctx, "local socket closed")
 			} else {
-				c.logger.ErrorContext(ctx, "failed to read from loocal socket", "error", err)
+				c.logger.ErrorContext(ctx, "failed to read from local socket", "error", err)
 			}
 			return
 		}
@@ -188,6 +195,6 @@ func (c *Client) sendPackets(
 	}
 }
 
-func makeLocalConn(ctx context.Context, port int) (net.Conn, error) {
+func makeLocalConn(port int) (net.Conn, error) {
 	return net.Dial("tcp", fmt.Sprintf("localhost:%d", port))
 }
