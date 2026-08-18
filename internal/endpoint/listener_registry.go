@@ -19,9 +19,6 @@ type ListenerRegistry struct {
 	listenerMU          sync.RWMutex
 	listenersByAddress  map[string]*ProxyListener
 	listenersByClientID map[string]*ProxyListener
-
-	connMU       sync.RWMutex
-	pendingConns map[string]*ProxyConn
 }
 
 // NewRegistry creates a new Registry.
@@ -63,13 +60,6 @@ func (r *ListenerRegistry) GetListenerByAddress(address string) (*ProxyListener,
 		return nil, ErrListenerNotFound
 	}
 	return listener, nil
-}
-
-// RemoveListener removes a listener from the registry.
-func (r *ListenerRegistry) RemoveListenerByAddress(address string) {
-	r.listenerMU.Lock()
-	defer r.listenerMU.Unlock()
-	delete(r.listenersByAddress, address)
 }
 
 func (r *ListenerRegistry) RemoveListenerByClientID(clientID string) {

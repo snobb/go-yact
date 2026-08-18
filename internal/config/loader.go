@@ -22,6 +22,7 @@ var (
 // Configer represents a valid configuration object.
 type Configer interface {
 	Validate() error
+	SetDefaults()
 }
 
 // Load loads config file into the provided configuration struct.

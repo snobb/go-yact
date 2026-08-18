@@ -1,9 +1,12 @@
 package endpoint
 
 import (
+	"errors"
 	"net"
 	"sync"
 )
+
+var ErrConnectionNotFound = errors.New("connection not found")
 
 type ProxyConn struct {
 	ID            string
@@ -47,7 +50,7 @@ func (r *ConnRegistry) ConnByConnectionID(connectionID, clientID string) (net.Co
 
 	conn, ok := r.conns[connectionID]
 	if !ok {
-		return nil, ErrListenerNotFound
+		return nil, ErrConnectionNotFound
 	}
 
 	if conn.OwnerClientID != clientID {

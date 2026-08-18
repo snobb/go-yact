@@ -20,7 +20,7 @@ type Config struct {
 	TLS       config.TLSConfig `envconfig:"tls_config" yaml:"tls_config"`
 	ProxyAddr string           `envconfig:"proxy_addr" yaml:"proxy_addr"`
 	ToAddr    string           `envconfig:"to_addr" yaml:"to_addr"`
-	LocalPort int              `envconfig:"local_portr" yaml:"local_port"`
+	LocalPort int              `envconfig:"local_port" yaml:"local_port"`
 
 	KeepAliveInterval time.Duration `envconfig:"keep_alive_interval" yaml:"keep_alive_interval"`
 	KeepAliveTimeout  time.Duration `envconfig:"keep_alive_timeout" yaml:"keep_alive_timeout"`
