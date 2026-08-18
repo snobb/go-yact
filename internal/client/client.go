@@ -32,29 +32,32 @@ func NewClient(logger logger.Logger, grpcClient pb.TunnelServiceClient, addr str
 }
 
 func (c *Client) Run(ctx context.Context, localPort int) error {
+	logCtx := logger.WithAttrs(ctx,
+		slog.String("entity", "client"))
+
 	// register Listener
 	registerProxyRequest := &pb.RegisterProxyRequest{BindAddress: c.address}
 
-	registerProxyResponse, err := c.grpcClient.RegisterProxy(ctx, registerProxyRequest)
+	registerProxyResponse, err := c.grpcClient.RegisterProxy(logCtx, registerProxyRequest)
 	if err != nil {
 		return err
 	}
 
-	c.logger.DebugContext(ctx, "registered proxy listener", "address", registerProxyResponse.Address)
+	c.logger.DebugContext(logCtx, "registered proxy listener", "address", registerProxyResponse.Address)
 
 	eventStreamRequest := pb.EventStreamRequest{
 		ListenerAddress: registerProxyResponse.Address,
 	}
 
-	eventStream, err := c.grpcClient.ListenEvents(ctx, &eventStreamRequest)
+	eventStream, err := c.grpcClient.ListenEvents(logCtx, &eventStreamRequest)
 	if err != nil {
 		return err
 	}
 
 	for {
 		select {
-		case <-ctx.Done():
-			c.logger.DebugContext(ctx, "client canceled by context")
+		case <-logCtx.Done():
+			c.logger.DebugContext(logCtx, "client canceled by context")
 			return nil
 		default:
 		}
@@ -64,27 +67,31 @@ func (c *Client) Run(ctx context.Context, localPort int) error {
 			return err
 		}
 
-		go c.handleConnectionEvent(ctx, localPort, event)
+		go c.handleConnectionEvent(logCtx, localPort, event)
 	}
 }
 
 func (c *Client) handleConnectionEvent(ctx context.Context, localPort int, event *pb.NewConnectionEvent) {
 	logCtx := logger.WithAttrs(ctx,
+		slog.String("entity", "client"),
 		slog.String("connection_id", event.ConnectionId),
 		slog.String("remote_addr", event.RemoteAddr))
 
 	c.logger.DebugContext(logCtx, "new connection event received")
+
+	cancelCtx, cancel := context.WithCancel(logCtx)
+	defer cancel()
 
 	conn, err := makeLocalConn(localPort)
 	if err != nil {
 		c.logger.ErrorContext(logCtx, "failed to create local connection", "error", err)
 		return
 	}
-	defer conn.Close()
 
-	stream, err := c.grpcClient.OpenDataPipe(ctx)
+	stream, err := c.grpcClient.OpenDataPipe(cancelCtx)
 	if err != nil {
 		c.logger.ErrorContext(logCtx, "failed to open data pipe", "error", err)
+		_ = conn.Close()
 		return
 	}
 
@@ -92,23 +99,27 @@ func (c *Client) handleConnectionEvent(ctx context.Context, localPort int, event
 
 	if err := stream.Send(packet); err != nil {
 		c.logger.ErrorContext(logCtx, "failed to send packet", "error", err)
+		_ = conn.Close()
 		return
 	}
 
 	var wg sync.WaitGroup
 	wg.Add(2)
 
-	cancelCtx, cancel := context.WithCancel(logCtx)
-	defer cancel()
+	go func() {
+		defer cancel()
+		defer c.logger.DebugContext(logCtx, "client: recv pipe closed")
+		c.receivePackets(cancelCtx, &wg, conn, stream)
+	}()
 
 	go func() {
 		defer cancel()
-		c.receivePackets(cancelCtx, &wg, conn, stream)
-	}()
-	go func() {
-		defer cancel()
+		defer c.logger.DebugContext(logCtx, "client: send pipe closed")
+		defer func() {
+			_ = stream.CloseSend()
+		}()
+
 		c.sendPackets(cancelCtx, &wg, conn, stream)
-		_ = stream.CloseSend()
 	}()
 
 	wg.Wait()
@@ -138,6 +149,11 @@ func (c *Client) receivePackets(
 			} else {
 				c.logger.ErrorContext(ctx, "failed to receive packet", "error", err)
 			}
+			return
+		}
+
+		if packet.Closed {
+			c.logger.DebugContext(ctx, "connection closed")
 			return
 		}
 

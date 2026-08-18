@@ -94,8 +94,6 @@ message RegisterProxyRequest {
 
 message RegisterProxyResponse {
   string address = 1;
-  // bool success = 2;
-  // string error_message = 3;
 }
 
 message EventStreamRequest {
@@ -112,6 +110,6 @@ message DataPacket {
   // connection_id is sent ONLY in the very first packet from client -> server that initiates the
   // proxy connection. Subsequent packets only populate payload.
   string connection_id = 1;
-
   bytes payload = 2;
+  bool closed = 3;
 }

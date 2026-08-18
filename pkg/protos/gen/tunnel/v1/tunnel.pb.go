@@ -222,6 +222,7 @@ type DataPacket struct {
 	// proxy connection. Subsequent packets only populate payload.
 	ConnectionId  string `protobuf:"bytes,1,opt,name=connection_id,json=connectionId,proto3" json:"connection_id,omitempty"`
 	Payload       []byte `protobuf:"bytes,2,opt,name=payload,proto3" json:"payload,omitempty"`
+	Closed        bool   `protobuf:"varint,3,opt,name=closed,proto3" json:"closed,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -270,6 +271,13 @@ func (x *DataPacket) GetPayload() []byte {
 	return nil
 }
 
+func (x *DataPacket) GetClosed() bool {
+	if x != nil {
+		return x.Closed
+	}
+	return false
+}
+
 var File_tunnel_v1_tunnel_proto protoreflect.FileDescriptor
 
 const file_tunnel_v1_tunnel_proto_rawDesc = "" +
@@ -285,11 +293,12 @@ const file_tunnel_v1_tunnel_proto_rawDesc = "" +
 	"\x12NewConnectionEvent\x12#\n" +
 	"\rconnection_id\x18\x01 \x01(\tR\fconnectionId\x12\x1f\n" +
 	"\vremote_addr\x18\x02 \x01(\tR\n" +
-	"remoteAddr\"K\n" +
+	"remoteAddr\"c\n" +
 	"\n" +
 	"DataPacket\x12#\n" +
 	"\rconnection_id\x18\x01 \x01(\tR\fconnectionId\x12\x18\n" +
-	"\apayload\x18\x02 \x01(\fR\apayload2\xf5\x01\n" +
+	"\apayload\x18\x02 \x01(\fR\apayload\x12\x16\n" +
+	"\x06closed\x18\x03 \x01(\bR\x06closed2\xf5\x01\n" +
 	"\rTunnelService\x12R\n" +
 	"\rRegisterProxy\x12\x1f.tunnel.v1.RegisterProxyRequest\x1a .tunnel.v1.RegisterProxyResponse\x12N\n" +
 	"\fListenEvents\x12\x1d.tunnel.v1.EventStreamRequest\x1a\x1d.tunnel.v1.NewConnectionEvent0\x01\x12@\n" +

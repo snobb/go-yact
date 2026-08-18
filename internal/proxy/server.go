@@ -47,6 +47,9 @@ func NewServer(ctx context.Context, logger logger.Logger) *Server {
 // RegisterProxy registers proxy listeners on the server.
 // NOTE: secret is not used for now.
 func (s *Server) RegisterProxy(ctx context.Context, handshakeRequest *pb.RegisterProxyRequest) (*pb.RegisterProxyResponse, error) {
+	logCtx := logger.WithAttrs(ctx,
+		slog.String("entity", "proxy"))
+
 	clientID, err := extractUserIdentity(ctx)
 	if err != nil {
 		return nil, status.Errorf(codes.PermissionDenied, "authentication failed: %v", err)
@@ -56,7 +59,7 @@ func (s *Server) RegisterProxy(ctx context.Context, handshakeRequest *pb.Registe
 
 	onNewConnection := func(connectionID string, conn net.Conn) {
 		s.connRegistry.AddConn(conn, connectionID, clientID)
-		s.logger.DebugContext(ctx, "stored pending tcp connection",
+		s.logger.DebugContext(logCtx, "stored pending tcp connection",
 			"connection_id", connectionID,
 			"client_id", clientID,
 			"remote_addr", conn.RemoteAddr().String())
@@ -95,6 +98,7 @@ func (s *Server) ListenEvents(eventStreamRequest *pb.EventStreamRequest, stream 
 	}
 
 	ctx := logger.WithAttrs(streamCtx,
+		slog.String("entity", "proxy"),
 		slog.String("client_id", clientID),
 		slog.String("listener_id", listener.Address()))
 
@@ -150,10 +154,8 @@ func (s *Server) OpenDataPipe(stream grpc.BidiStreamingServer[pb.DataPacket, pb.
 	connectionID := initialPacket.GetConnectionId()
 
 	logCtx := logger.WithAttrs(streamCtx,
+		slog.String("entity", "proxy"),
 		slog.String("client_id", clientID),
-		slog.String("connection_id", connectionID))
-
-	logCtx = logger.WithAttrs(logCtx,
 		slog.String("connection_id", connectionID))
 
 	conn, err := s.connRegistry.ConnByConnectionID(connectionID, clientID)
@@ -161,13 +163,13 @@ func (s *Server) OpenDataPipe(stream grpc.BidiStreamingServer[pb.DataPacket, pb.
 		s.logger.ErrorContext(logCtx, "failed to find pending connection", "error", err)
 		return status.Error(codes.NotFound, "failed to get listener")
 	}
-	defer conn.Close()
 
-	if initialPacket.Payload != nil {
+	if len(initialPacket.Payload) > 0 {
 		// if the initial packet contains payload - send it over right away.
 		if n, err := conn.Write(initialPacket.Payload); err != nil {
 			s.logger.ErrorContext(logCtx, "failed to write initial packet payload",
 				"error", err, "bytes_written", n)
+			_ = conn.Close()
 			return status.Error(codes.Unavailable, "failed to write initial packet payload")
 		}
 	}
@@ -180,15 +182,19 @@ func (s *Server) OpenDataPipe(stream grpc.BidiStreamingServer[pb.DataPacket, pb.
 
 	go func() {
 		defer cancel()
+		defer s.logger.DebugContext(logCtx, "server: recv pipe closed")
 		s.receivePackets(cancelCtx, &wg, conn, stream)
 	}()
 
 	go func() {
 		defer cancel()
+		defer s.logger.DebugContext(logCtx, "server: send pipe closed")
 		s.sendPackets(cancelCtx, &wg, conn, stream)
 	}()
 
 	wg.Wait()
+
+	s.logger.DebugContext(logCtx, "tunnel closed and cleaned up successfully")
 
 	return nil
 }
@@ -207,8 +213,13 @@ func (s *Server) receivePackets(ctx context.Context, wg *sync.WaitGroup, conn ne
 
 		packet, err := stream.Recv()
 		if err != nil {
-			s.logger.ErrorContext(ctx, "failed to receive packet", "error", err)
-			break
+			// Expected normal closures when context is canceled or client closes stream
+			if errors.Is(err, io.EOF) {
+				s.logger.DebugContext(ctx, "grpc receive stream closed cleanly", "reason", err)
+			} else {
+				s.logger.ErrorContext(ctx, "failed to receive packet", "error", err)
+			}
+			return
 		}
 
 		if len(packet.Payload) > 0 {
@@ -223,6 +234,11 @@ func (s *Server) receivePackets(ctx context.Context, wg *sync.WaitGroup, conn ne
 func (s *Server) sendPackets(ctx context.Context, wg *sync.WaitGroup, conn net.Conn, stream grpc.BidiStreamingServer[pb.DataPacket, pb.DataPacket]) {
 	defer wg.Done()
 	defer conn.Close()
+	defer func() {
+		if err := stream.Send(&pb.DataPacket{Closed: true}); err != nil {
+			s.logger.ErrorContext(ctx, "failed to send close packet", "error", err)
+		}
+	}()
 
 	buf := make([]byte, bufferSize)
 
