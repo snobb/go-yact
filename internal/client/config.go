@@ -41,6 +41,8 @@ func (c Config) Validate() error {
 
 // SetDefaults sets the default values to the struct.
 func (c *Config) SetDefaults() {
+	c.TLS.SetDefaults()
+
 	if c.ProxyAddr == "" {
 		c.ProxyAddr = ":8008"
 	}

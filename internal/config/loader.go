@@ -26,7 +26,7 @@ type Configer interface {
 }
 
 // Load loads config file into the provided configuration struct.
-func Load[T Configer](configPath string, cfg *T) error {
+func Load[T Configer](configPath string, cfg T) error {
 	if _, err := os.Stat(configPath); err == nil {
 		if err := loadFile(configPath, cfg); err != nil {
 			return fmt.Errorf("unable to load %q config file > %w", configPath, err)
@@ -42,7 +42,7 @@ func Load[T Configer](configPath string, cfg *T) error {
 }
 
 // Load and unmarshal yaml config file.
-func loadFile[T Configer](fileName string, cfg *T) error {
+func loadFile[T Configer](fileName string, cfg T) error {
 	data, err := osReadFileFunc(fileName)
 	if err != nil {
 		return err

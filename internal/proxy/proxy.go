@@ -27,7 +27,8 @@ func Run(ctx context.Context, log logger.Logger, cfg *Config) error {
 		return err
 	}
 
-	tc, err := InitCredentials(cfg.TLS.CAPath, cfg.TLS.CertPath, cfg.TLS.KeyPath)
+	ca, cert, key := cfg.TLS.ServerPaths()
+	tc, err := InitCredentials(ca, cert, key)
 	if err != nil {
 		log.ErrorContext(logCtx, "unable to initialize mTLS credentials", "error", err)
 		return err

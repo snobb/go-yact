@@ -1,5 +1,3 @@
 tls_config:
-  ca_path:   ./config/certs/ca/ca.crt
-  cert_path: ./config/certs/server/server.crt
-  key_path:  ./config/certs/server/server.key
+  cert_dir: ./config/certs
 proxy_addr: "localhost:8008"

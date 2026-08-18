@@ -10,6 +10,7 @@ import (
 
 	"github.com/kelseyhightower/envconfig"
 
+	"github.com/snobb/go-yact/internal/certgen"
 	"github.com/snobb/go-yact/internal/client"
 	"github.com/snobb/go-yact/internal/config"
 	"github.com/snobb/go-yact/internal/logger"
@@ -34,8 +35,9 @@ func parseArgs() (Action, error) {
 		fmt.Println("\nGlobal flags:")
 		global.PrintDefaults()
 		fmt.Println("\nCommands:")
-		fmt.Println("  proxy    Start a proxy server")
-		fmt.Println("  client   Start a client")
+		fmt.Println("  proxy      Start a proxy server")
+		fmt.Println("  client     Start a client")
+		fmt.Println("  make-certs Generate mTLS certificates")
 		fmt.Printf("\nPlease run '%s <cmd> -h' for more information", command)
 		fmt.Println("")
 	}
@@ -67,6 +69,8 @@ func parseArgs() (Action, error) {
 		return handleProxy(logger, configPath, subCommandArgs)
 	case "client":
 		return handleClient(logger, configPath, subCommandArgs)
+	case "make-certs":
+		return handleMakeCerts(subCommandArgs)
 	default:
 		global.Usage()
 		return nil, fmt.Errorf("unknown command: %s", subCommand)
@@ -84,9 +88,7 @@ func handleProxy(logger logger.Logger, configPath string, args []string) (Action
 	}
 	cfg.SetDefaults()
 
-	fs.StringVar(&cfg.TLS.CAPath, "ca", cfg.TLS.CAPath, "CA certificate path")
-	fs.StringVar(&cfg.TLS.CertPath, "cert", cfg.TLS.CertPath, "TLS certificate path")
-	fs.StringVar(&cfg.TLS.KeyPath, "key", cfg.TLS.KeyPath, "TLS key path")
+	fs.StringVar(&cfg.TLS.CertDir, "cert-dir", cfg.TLS.CertDir, "certificate directory")
 
 	fs.StringVar(&cfg.ProxyAddr, "addr", cfg.ProxyAddr, "address to listen on")
 
@@ -131,9 +133,7 @@ func handleClient(logger logger.Logger, configPath string, args []string) (Actio
 
 	cfg.SetDefaults()
 
-	fs.StringVar(&cfg.TLS.CAPath, "ca", cfg.TLS.CAPath, "CA certificate path")
-	fs.StringVar(&cfg.TLS.CertPath, "cert", cfg.TLS.CertPath, "TLS certificate path")
-	fs.StringVar(&cfg.TLS.KeyPath, "key", cfg.TLS.KeyPath, "TLS key path")
+	fs.StringVar(&cfg.TLS.CertDir, "cert-dir", cfg.TLS.CertDir, "certificate directory")
 
 	fs.StringVar(&cfg.ProxyAddr, "addr", cfg.ProxyAddr, "address of proxy to connect to")
 	fs.StringVar(&cfg.ToAddr, "to", cfg.ToAddr, "address to tunnel connections from")
@@ -159,6 +159,30 @@ func handleClient(logger logger.Logger, configPath string, args []string) (Actio
 	return Action(func(ctx context.Context) error {
 		logger.DebugContext(ctx, "config", "config", cfg)
 		return client.Run(ctx, logger, &cfg)
+	}), nil
+}
+
+func handleMakeCerts(args []string) (Action, error) {
+	fs := flag.NewFlagSet("make-certs", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+
+	certDir := config.DefaultCertDir()
+	fs.StringVar(&certDir, "cert-dir", certDir, "certificate directory")
+
+	fs.Usage = func() {
+		fs.SetOutput(os.Stdout)
+		defer fs.SetOutput(io.Discard)
+
+		fmt.Printf("Usage: %s make-certs [args]\n", command)
+		fs.PrintDefaults()
+	}
+
+	if err := fs.Parse(args); err != nil {
+		return nil, err
+	}
+
+	return Action(func(ctx context.Context) error {
+		return certgen.Generate(certDir)
 	}), nil
 }
 

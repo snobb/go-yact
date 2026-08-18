@@ -13,9 +13,7 @@
 *.test
 
 # config
-/config/certs/ca
-/config/certs/client
-/config/certs/server
+/config/certs
 /yactrc.yaml
 
 # Code coverage profiles and other test artifacts
