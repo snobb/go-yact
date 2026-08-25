@@ -10,7 +10,7 @@ import (
 
 const (
 	ConfigFileName = "yactrc.yaml"
-	EnvVarPrefix   = "YACT_"
+	EnvVarPrefix   = "YACT"
 )
 
 var (

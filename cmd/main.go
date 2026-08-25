@@ -4,11 +4,12 @@ package main
 import (
 	"context"
 	"errors"
-	"flag"
 	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
+
+	"github.com/spf13/pflag"
 )
 
 func main() {
@@ -21,10 +22,14 @@ func main() {
 func run() error {
 	action, err := parseArgs()
 	if err != nil {
-		if errors.Is(err, flag.ErrHelp) {
+		if errors.Is(err, pflag.ErrHelp) {
 			return nil
 		}
 		return err
+	}
+
+	if action == nil {
+		return nil
 	}
 
 	ctx, cancel := signal.NotifyContext(context.Background(),

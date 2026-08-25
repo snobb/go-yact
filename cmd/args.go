@@ -2,13 +2,13 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"io"
 	"log/slog"
 	"os"
 
 	"github.com/kelseyhightower/envconfig"
+	"github.com/spf13/pflag"
 
 	"github.com/snobb/go-yact/internal/certgen"
 	"github.com/snobb/go-yact/internal/client"
@@ -24,12 +24,11 @@ var command string
 func parseArgs() (Action, error) {
 	command = os.Args[0]
 
-	global := flag.NewFlagSet("yact", flag.ContinueOnError)
-	global.SetOutput(io.Discard)
+	global := pflag.NewFlagSet("yact", pflag.ContinueOnError)
 
 	global.Usage = func() {
-		global.SetOutput(os.Stdout)
-		defer global.SetOutput(io.Discard)
+		// global.SetOutput(os.Stdout)
+		// defer global.SetOutput(io.Discard)
 
 		fmt.Printf("Usage: %s [global flags] <command> [command flags]\n", command)
 		fmt.Println("\nGlobal flags:")
@@ -42,21 +41,32 @@ func parseArgs() (Action, error) {
 		fmt.Println("")
 	}
 
-	var debug bool
-	var configPath string
+	var (
+		help       bool
+		debug      bool
+		configPath string
+	)
 
-	global.BoolVar(&debug, "d", false, "debug output")
-	global.StringVar(&configPath, "c", config.ConfigFileName, "config file")
+	global.BoolVarP(&help, "help", "h", false, "show help")
+	global.BoolVarP(&debug, "debug", "d", false, "debug output")
+	global.StringVarP(&configPath, "config", "c", config.ConfigFileName, "config file")
 
-	err := global.Parse(os.Args[1:])
-	if err != nil {
+	if err := global.Parse(os.Args[1:]); err != nil {
 		return nil, err
 	}
 
 	remaining := global.Args()
 	if len(remaining) == 0 {
 		global.Usage()
+		if help {
+			return nil, nil
+		}
 		return nil, fmt.Errorf("missing command")
+	}
+
+	if help {
+		// pass -h flag to subcommands if provided.
+		remaining = append(remaining, "-h")
 	}
 
 	subCommand := remaining[0]
@@ -78,8 +88,7 @@ func parseArgs() (Action, error) {
 }
 
 func handleProxy(logger logger.Logger, configPath string, args []string) (Action, error) { //nolint:dupl
-	fs := flag.NewFlagSet("proxy", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
+	fs := pflag.NewFlagSet("proxy", pflag.ContinueOnError)
 
 	cfg := proxy.Config{}
 
@@ -88,16 +97,14 @@ func handleProxy(logger logger.Logger, configPath string, args []string) (Action
 	}
 	cfg.SetDefaults()
 
-	fs.StringVar(&cfg.TLS.CertDir, "cert-dir", cfg.TLS.CertDir, "certificate directory")
-
-	fs.StringVar(&cfg.ProxyAddr, "addr", cfg.ProxyAddr, "address to listen on")
-
-	fs.DurationVar(&cfg.KeepAliveInterval, "i", proxy.DefaultKeepAliveInterval, "keep-alive interval")
-	fs.DurationVar(&cfg.KeepAliveTimeout, "t", proxy.DefaultKeepAliveTimeout, "keep-alive timeout")
+	fs.StringVarP(&cfg.TLS.CertDir, "cert-dir", "R", cfg.TLS.CertDir, "certificate directory")
+	fs.StringVarP(&cfg.ProxyAddr, "address", "a", cfg.ProxyAddr, "address to listen on")
+	fs.DurationVarP(&cfg.KeepAliveInterval, "keep-alive-interval", "I", proxy.DefaultKeepAliveInterval, "keep-alive interval")
+	fs.DurationVarP(&cfg.KeepAliveTimeout, "keep-alive-timeout", "T", proxy.DefaultKeepAliveTimeout, "keep-alive timeout")
 
 	fs.Usage = func() {
-		fs.SetOutput(os.Stdout)
-		defer fs.SetOutput(io.Discard)
+		// fs.SetOutput(os.Stdout)
+		// defer fs.SetOutput(io.Discard)
 
 		fmt.Printf("Usage: %s [global flags] proxy [args]\n", command)
 		fs.PrintDefaults()
@@ -122,8 +129,7 @@ func handleProxy(logger logger.Logger, configPath string, args []string) (Action
 }
 
 func handleClient(logger logger.Logger, configPath string, args []string) (Action, error) { //nolint:dupl
-	fs := flag.NewFlagSet("client", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
+	fs := pflag.NewFlagSet("client", pflag.ContinueOnError)
 
 	cfg := client.Config{}
 
@@ -133,18 +139,17 @@ func handleClient(logger logger.Logger, configPath string, args []string) (Actio
 
 	cfg.SetDefaults()
 
-	fs.StringVar(&cfg.TLS.CertDir, "cert-dir", cfg.TLS.CertDir, "certificate directory")
+	fs.StringVarP(&cfg.TLS.CertDir, "cert-dir", "R", cfg.TLS.CertDir, "certificate directory")
+	fs.StringVarP(&cfg.ProxyAddr, "address", "a", cfg.ProxyAddr, "address of proxy to connect to")
+	fs.StringVarP(&cfg.ToAddr, "to", "t", cfg.ToAddr, "address to tunnel connections from")
+	fs.IntVarP(&cfg.LocalPort, "local-port", "p", cfg.LocalPort, "port to local connection")
 
-	fs.StringVar(&cfg.ProxyAddr, "addr", cfg.ProxyAddr, "address of proxy to connect to")
-	fs.StringVar(&cfg.ToAddr, "to", cfg.ToAddr, "address to tunnel connections from")
-	fs.IntVar(&cfg.LocalPort, "local-port", cfg.LocalPort, "port to local connection")
-
-	fs.DurationVar(&cfg.KeepAliveInterval, "i", client.DefaultKeepAliveInterval, "keep-alive interval")
-	fs.DurationVar(&cfg.KeepAliveTimeout, "t", client.DefaultKeepAliveTimeout, "keep-alive timeout")
+	fs.DurationVarP(&cfg.KeepAliveInterval, "keep-alive-interval", "I", proxy.DefaultKeepAliveInterval, "keep-alive interval")
+	fs.DurationVarP(&cfg.KeepAliveTimeout, "keep-alive-timeout", "T", proxy.DefaultKeepAliveTimeout, "keep-alive timeout")
 
 	fs.Usage = func() {
-		fs.SetOutput(os.Stdout)
-		defer fs.SetOutput(io.Discard)
+		// fs.SetOutput(os.Stdout)
+		// defer fs.SetOutput(io.Discard)
 
 		fmt.Printf("Usage: %s [global flags] client [args]\n", command)
 		fs.PrintDefaults()
@@ -163,11 +168,11 @@ func handleClient(logger logger.Logger, configPath string, args []string) (Actio
 }
 
 func handleMakeCerts(args []string) (Action, error) {
-	fs := flag.NewFlagSet("make-certs", flag.ContinueOnError)
+	fs := pflag.NewFlagSet("make-certs", pflag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 
 	certDir := config.DefaultCertDir()
-	fs.StringVar(&certDir, "cert-dir", certDir, "certificate directory")
+	fs.StringVarP(&certDir, "cert-dir", "R", certDir, "certificate directory")
 
 	fs.Usage = func() {
 		fs.SetOutput(os.Stdout)
