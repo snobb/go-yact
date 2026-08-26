@@ -23,20 +23,19 @@ type Client struct {
 	grpcClient pb.TunnelServiceClient
 }
 
-func NewClient(logger logger.Logger, grpcClient pb.TunnelServiceClient, addr string) *Client {
+func NewClient(logger logger.Logger, grpcClient pb.TunnelServiceClient) *Client {
 	return &Client{
 		logger:     logger,
-		address:    addr,
 		grpcClient: grpcClient,
 	}
 }
 
-func (c *Client) Run(ctx context.Context, localPort int) error {
+func (c *Client) Run(ctx context.Context, bindAddress string, localPort int) error {
 	logCtx := logger.WithAttrs(ctx,
 		slog.String("entity", "client"))
 
 	// register Listener
-	registerProxyRequest := &pb.RegisterProxyRequest{BindAddress: c.address}
+	registerProxyRequest := &pb.RegisterProxyRequest{BindAddress: bindAddress}
 
 	registerProxyResponse, err := c.grpcClient.RegisterProxy(logCtx, registerProxyRequest)
 	if err != nil {

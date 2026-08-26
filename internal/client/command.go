@@ -11,7 +11,7 @@ const bufferSize = 32 * 1024
 
 // Run starts the client.
 func Run(ctx context.Context, logger logger.Logger, cfg *Config) error {
-	logger.InfoContext(ctx, "starting client - connecting to proxy server", "addr", cfg.ToAddr)
+	logger.InfoContext(ctx, "starting client - connecting to proxy server", "addr", cfg.ProxyAddr)
 	// create a control plane connection.
 	conn, closeFunc, err := makeControlConn(cfg)
 	if err != nil {
@@ -21,6 +21,6 @@ func Run(ctx context.Context, logger logger.Logger, cfg *Config) error {
 
 	grpcClient := pb.NewTunnelServiceClient(conn)
 
-	client := NewClient(logger, grpcClient, cfg.ToAddr)
-	return client.Run(ctx, cfg.LocalPort)
+	client := NewClient(logger, grpcClient)
+	return client.Run(ctx, cfg.ToAddrs[0].BindAddress, cfg.ToAddrs[0].LocalPort)
 }

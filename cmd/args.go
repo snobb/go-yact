@@ -3,9 +3,10 @@ package main
 import (
 	"context"
 	"fmt"
-	"io"
 	"log/slog"
 	"os"
+	"strconv"
+	"strings"
 
 	"github.com/kelseyhightower/envconfig"
 	"github.com/spf13/pflag"
@@ -27,9 +28,6 @@ func parseArgs() (Action, error) {
 	global := pflag.NewFlagSet("yact", pflag.ContinueOnError)
 
 	global.Usage = func() {
-		// global.SetOutput(os.Stdout)
-		// defer global.SetOutput(io.Discard)
-
 		fmt.Printf("Usage: %s [global flags] <command> [command flags]\n", command)
 		fmt.Println("\nGlobal flags:")
 		global.PrintDefaults()
@@ -103,9 +101,6 @@ func handleProxy(logger logger.Logger, configPath string, args []string) (Action
 	fs.DurationVarP(&cfg.KeepAliveTimeout, "keep-alive-timeout", "T", proxy.DefaultKeepAliveTimeout, "keep-alive timeout")
 
 	fs.Usage = func() {
-		// fs.SetOutput(os.Stdout)
-		// defer fs.SetOutput(io.Discard)
-
 		fmt.Printf("Usage: %s [global flags] proxy [args]\n", command)
 		fs.PrintDefaults()
 		fmt.Println("\nEnvironment variables can be provided:")
@@ -139,18 +134,15 @@ func handleClient(logger logger.Logger, configPath string, args []string) (Actio
 
 	cfg.SetDefaults()
 
+	var bindAddrs []string
+
 	fs.StringVarP(&cfg.TLS.CertDir, "cert-dir", "R", cfg.TLS.CertDir, "certificate directory")
 	fs.StringVarP(&cfg.ProxyAddr, "address", "a", cfg.ProxyAddr, "address of proxy to connect to")
-	fs.StringVarP(&cfg.ToAddr, "to", "t", cfg.ToAddr, "address to tunnel connections from")
-	fs.IntVarP(&cfg.LocalPort, "local-port", "p", cfg.LocalPort, "port to local connection")
-
+	fs.StringArrayVarP(&bindAddrs, "listen", "L", []string{}, "bind_host:bind_port:local:port to listen on. Eg. 127.0.0.1:8080:8080 or :8080:8080")
 	fs.DurationVarP(&cfg.KeepAliveInterval, "keep-alive-interval", "I", proxy.DefaultKeepAliveInterval, "keep-alive interval")
 	fs.DurationVarP(&cfg.KeepAliveTimeout, "keep-alive-timeout", "T", proxy.DefaultKeepAliveTimeout, "keep-alive timeout")
 
 	fs.Usage = func() {
-		// fs.SetOutput(os.Stdout)
-		// defer fs.SetOutput(io.Discard)
-
 		fmt.Printf("Usage: %s [global flags] client [args]\n", command)
 		fs.PrintDefaults()
 		fmt.Println("\nEnvironment variables can be provided:")
@@ -161,6 +153,12 @@ func handleClient(logger logger.Logger, configPath string, args []string) (Actio
 		return nil, err
 	}
 
+	addrs, err := parseBindAddresses(bindAddrs)
+	if err != nil {
+		return nil, err
+	}
+	cfg.ToAddrs = addrs
+
 	return Action(func(ctx context.Context) error {
 		logger.DebugContext(ctx, "config", "config", cfg)
 		return client.Run(ctx, logger, &cfg)
@@ -169,15 +167,11 @@ func handleClient(logger logger.Logger, configPath string, args []string) (Actio
 
 func handleMakeCerts(args []string) (Action, error) {
 	fs := pflag.NewFlagSet("make-certs", pflag.ContinueOnError)
-	fs.SetOutput(io.Discard)
 
 	certDir := config.DefaultCertDir()
 	fs.StringVarP(&certDir, "cert-dir", "R", certDir, "certificate directory")
 
 	fs.Usage = func() {
-		fs.SetOutput(os.Stdout)
-		defer fs.SetOutput(io.Discard)
-
 		fmt.Printf("Usage: %s make-certs [args]\n", command)
 		fs.PrintDefaults()
 	}
@@ -198,4 +192,41 @@ func initLogger(debug bool) logger.Logger {
 		})
 	}
 	return logger.New(os.Stdout, nil)
+}
+
+func parseBindAddresses(addrs []string) ([]client.BindAddress, error) {
+	if len(addrs) == 0 {
+		return []client.BindAddress{
+			{BindAddress: ":8443", LocalPort: 8443},
+		}, nil
+	}
+
+	var bindAddrs []client.BindAddress
+
+	for _, addr := range addrs {
+		bindAddr, err := parseBindAddress(addr)
+		if err != nil {
+			return nil, err
+		}
+		bindAddrs = append(bindAddrs, bindAddr)
+	}
+
+	return bindAddrs, nil
+}
+
+func parseBindAddress(bindAddr string) (client.BindAddress, error) {
+	bindAddrParts := strings.Split(bindAddr, ":")
+	if len(bindAddrParts) != 3 {
+		return client.BindAddress{}, fmt.Errorf("invalid bind address: %s", bindAddr)
+	}
+
+	localPort, err := strconv.Atoi(bindAddrParts[2])
+	if err != nil {
+		return client.BindAddress{}, err
+	}
+
+	return client.BindAddress{
+		BindAddress: bindAddrParts[0] + ":" + bindAddrParts[1],
+		LocalPort:   localPort,
+	}, nil
 }

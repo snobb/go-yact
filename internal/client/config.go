@@ -2,8 +2,6 @@ package client
 
 import (
 	"fmt"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/snobb/go-yact/internal/config"
@@ -15,12 +13,16 @@ const (
 	DefaultKeepAliveTimeout  = 5 * time.Second
 )
 
+type BindAddress struct {
+	BindAddress string
+	LocalPort   int
+}
+
 // Config is a client configuration.
 type Config struct {
 	TLS       config.TLSConfig `envconfig:"tls_config" yaml:"tls_config"`
 	ProxyAddr string           `envconfig:"proxy_addr" yaml:"proxy_addr"`
-	ToAddr    string           `envconfig:"to_addr" yaml:"to_addr"`
-	LocalPort int              `envconfig:"local_port" yaml:"local_port"`
+	ToAddrs   []BindAddress    `envconfig:"to_addrs" yaml:"to_addrs"`
 
 	KeepAliveInterval time.Duration `envconfig:"keep_alive_interval" yaml:"keep_alive_interval"`
 	KeepAliveTimeout  time.Duration `envconfig:"keep_alive_timeout" yaml:"keep_alive_timeout"`
@@ -47,13 +49,8 @@ func (c *Config) SetDefaults() {
 		c.ProxyAddr = ":8008"
 	}
 
-	if c.ToAddr == "" {
-		c.ToAddr = ":443"
-	}
-
-	if c.LocalPort == 0 {
-		addrTokens := strings.Split(c.ToAddr, ":")
-		c.LocalPort, _ = strconv.Atoi(addrTokens[1])
+	if len(c.ToAddrs) == 0 {
+		c.ToAddrs = []BindAddress{{BindAddress: ":443", LocalPort: 443}}
 	}
 
 	if c.KeepAliveInterval == 0 {
@@ -63,4 +60,12 @@ func (c *Config) SetDefaults() {
 	if c.KeepAliveTimeout == 0 {
 		c.KeepAliveTimeout = DefaultKeepAliveTimeout
 	}
+}
+
+func (c Config) BindAddresses() []string {
+	addrs := make([]string, 0, len(c.ToAddrs))
+	for _, addr := range c.ToAddrs {
+		addrs = append(addrs, addr.BindAddress)
+	}
+	return addrs
 }
