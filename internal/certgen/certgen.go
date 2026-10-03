@@ -29,7 +29,7 @@ const (
 
 // Generate creates a CA, server, and client certificate in certDir.
 // The CA private key is never written to disk.
-func Generate(certDir string) error {
+func Generate(certDir string, domains []string, ipAddrs []net.IP, nClients int) error {
 	if err := os.MkdirAll(certDir, 0o755); err != nil {
 		return fmt.Errorf("creating cert directory: %w", err)
 	}
@@ -43,22 +43,25 @@ func Generate(certDir string) error {
 		return fmt.Errorf("writing CA cert: %w", err)
 	}
 
-	if err := generateCert(certDir, caKey, caCert, caCertDER, "server",
+	if err := generateCert(certDir, caKey, caCert, "server",
 		x509.ExtKeyUsageServerAuth,
 		"server",
-		[]string{"localhost"},
-		[]net.IP{net.IPv4(127, 0, 0, 1)},
+		domains,
+		ipAddrs,
 	); err != nil {
 		return fmt.Errorf("generating server cert: %w", err)
 	}
 
-	if err := generateCert(certDir, caKey, caCert, caCertDER, "client",
-		x509.ExtKeyUsageClientAuth,
-		"client",
-		nil,
-		nil,
-	); err != nil {
-		return fmt.Errorf("generating client cert: %w", err)
+	for i := range nClients {
+		if err := generateCert(certDir, caKey, caCert,
+			fmt.Sprintf("client%d", i+1),
+			x509.ExtKeyUsageClientAuth,
+			"client",
+			nil, // explicitly empty for client cert DNS names.
+			nil, // explicitly empty for client cert IP addresses.
+		); err != nil {
+			return fmt.Errorf("generating client cert: %w", err)
+		}
 	}
 
 	return nil
@@ -101,7 +104,6 @@ func generateCert(
 	certDir string,
 	caKey ed25519.PrivateKey,
 	caCert *x509.Certificate,
-	caCertDER []byte,
 	name string,
 	extKeyUsage x509.ExtKeyUsage,
 	role string,

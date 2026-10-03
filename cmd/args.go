@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net"
 	"os"
 	"strconv"
 	"strings"
@@ -25,12 +26,14 @@ var command string
 func parseArgs() (Action, error) {
 	command = os.Args[0]
 
-	global := pflag.NewFlagSet("yact", pflag.ContinueOnError)
+	// disable interspersed flags to let sub-flagsets get options from pflag.
+	// NOTE: the flags must not clash between root level and sub-flagsets.
+	pflag.CommandLine.SetInterspersed(false)
 
-	global.Usage = func() {
-		fmt.Printf("Usage: %s [global flags] <command> [command flags]\n", command)
-		fmt.Println("\nGlobal flags:")
-		global.PrintDefaults()
+	pflag.Usage = func() {
+		fmt.Printf("Usage: %s [pflag flags] <command> [command flags]\n", command)
+		fmt.Println("\npflag flags:")
+		pflag.PrintDefaults()
 		fmt.Println("\nCommands:")
 		fmt.Println("  proxy      Start a proxy server")
 		fmt.Println("  client     Start a client")
@@ -45,17 +48,15 @@ func parseArgs() (Action, error) {
 		configPath string
 	)
 
-	global.BoolVarP(&help, "help", "h", false, "show help")
-	global.BoolVarP(&debug, "debug", "d", false, "debug output")
-	global.StringVarP(&configPath, "config", "c", config.ConfigFileName, "config file")
+	pflag.BoolVarP(&help, "help", "h", false, "show help")
+	pflag.BoolVarP(&debug, "debug", "d", false, "debug output")
+	pflag.StringVarP(&configPath, "config", "c", config.ConfigFileName, "config file")
 
-	if err := global.Parse(os.Args[1:]); err != nil {
-		return nil, err
-	}
+	pflag.Parse()
 
-	remaining := global.Args()
+	remaining := pflag.Args()
 	if len(remaining) == 0 {
-		global.Usage()
+		pflag.Usage()
 		if help {
 			return nil, nil
 		}
@@ -80,7 +81,7 @@ func parseArgs() (Action, error) {
 	case "make-certs":
 		return handleMakeCerts(subCommandArgs)
 	default:
-		global.Usage()
+		pflag.Usage()
 		return nil, fmt.Errorf("unknown command: %s", subCommand)
 	}
 }
@@ -101,7 +102,7 @@ func handleProxy(logger logger.Logger, configPath string, args []string) (Action
 	fs.DurationVarP(&cfg.KeepAliveTimeout, "keep-alive-timeout", "T", proxy.DefaultKeepAliveTimeout, "keep-alive timeout")
 
 	fs.Usage = func() {
-		fmt.Printf("Usage: %s [global flags] proxy [args]\n", command)
+		fmt.Printf("Usage: %s [pflag flags] proxy [args]\n", command)
 		fs.PrintDefaults()
 		fmt.Println("\nEnvironment variables can be provided:")
 		_ = envconfig.Usage(config.EnvVarPrefix, &cfg)
@@ -143,7 +144,7 @@ func handleClient(logger logger.Logger, configPath string, args []string) (Actio
 	fs.DurationVarP(&cfg.KeepAliveTimeout, "keep-alive-timeout", "T", proxy.DefaultKeepAliveTimeout, "keep-alive timeout")
 
 	fs.Usage = func() {
-		fmt.Printf("Usage: %s [global flags] client [args]\n", command)
+		fmt.Printf("Usage: %s [pflag flags] client [args]\n", command)
 		fs.PrintDefaults()
 		fmt.Println("\nEnvironment variables can be provided:")
 		_ = envconfig.Usage(config.EnvVarPrefix, &cfg)
@@ -168,8 +169,19 @@ func handleClient(logger logger.Logger, configPath string, args []string) (Actio
 func handleMakeCerts(args []string) (Action, error) {
 	fs := pflag.NewFlagSet("make-certs", pflag.ContinueOnError)
 
-	certDir := config.DefaultCertDir()
+	var (
+		certDir   = config.DefaultCertDir()
+		domains   []string
+		IPAddrStr []string
+		nClients  int
+	)
+
 	fs.StringVarP(&certDir, "cert-dir", "R", certDir, "certificate directory")
+	fs.StringArrayVarP(&domains, "domain", "d", []string{"localhost"},
+		"domain names (can be specified multiple times)")
+	fs.StringArrayVarP(&IPAddrStr, "ip-address", "a", nil,
+		"IP address (can be specified multiple times)")
+	fs.IntVarP(&nClients, "clients", "n", 1, "number of client certificates to generate")
 
 	fs.Usage = func() {
 		fmt.Printf("Usage: %s make-certs [args]\n", command)
@@ -180,8 +192,18 @@ func handleMakeCerts(args []string) (Action, error) {
 		return nil, err
 	}
 
+	ips, err := parseIPs(IPAddrStr)
+	if err != nil {
+		return nil, err
+	}
+
+	fmt.Println("Generating certificates in", certDir)
+	fmt.Println("  Domains:", strings.Join(domains, ", "))
+	fmt.Println("  IP addresses:", strings.Join(IPAddrStr, ", "))
+	fmt.Println("  Number of clients:", nClients)
+
 	return Action(func(ctx context.Context) error {
-		return certgen.Generate(certDir)
+		return certgen.Generate(certDir, domains, ips, nClients)
 	}), nil
 }
 
@@ -229,4 +251,16 @@ func parseBindAddress(bindAddr string) (client.BindAddress, error) {
 		BindAddress: bindAddrParts[0] + ":" + bindAddrParts[1],
 		LocalPort:   localPort,
 	}, nil
+}
+
+func parseIPs(ips []string) ([]net.IP, error) {
+	var parsedIPs []net.IP
+	for _, ip := range ips {
+		parsedIP := net.ParseIP(ip)
+		if parsedIP == nil {
+			return nil, fmt.Errorf("invalid IP address: %s", ip)
+		}
+		parsedIPs = append(parsedIPs, parsedIP)
+	}
+	return parsedIPs, nil
 }
