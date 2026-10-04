@@ -18,14 +18,14 @@ var (
 type ListenerRegistry struct {
 	listenerMU          sync.RWMutex
 	listenersByAddress  map[string]*ProxyListener
-	listenersByClientID map[string]*ProxyListener
+	addressesByClientID map[string][]string
 }
 
 // NewRegistry creates a new Registry.
 func NewRegistry() *ListenerRegistry {
 	return &ListenerRegistry{
 		listenersByAddress:  make(map[string]*ProxyListener),
-		listenersByClientID: make(map[string]*ProxyListener),
+		addressesByClientID: make(map[string][]string),
 	}
 }
 
@@ -45,7 +45,9 @@ func (r *ListenerRegistry) Register(ctx context.Context, address, ownerID string
 	}
 
 	r.listenersByAddress[address] = listener
-	r.listenersByClientID[ownerID] = listener
+
+	addrs := r.addressesByClientID[ownerID]
+	r.addressesByClientID[ownerID] = append(addrs, address)
 
 	return nil
 }
@@ -66,14 +68,15 @@ func (r *ListenerRegistry) RemoveListenerByClientID(clientID string) {
 	r.listenerMU.Lock()
 	defer r.listenerMU.Unlock()
 
-	listener, ok := r.listenersByClientID[clientID]
-	if !ok {
-		return
+	for _, addr := range r.addressesByClientID[clientID] {
+		listener, ok := r.listenersByAddress[addr]
+		if !ok {
+			continue
+		}
+
+		listener.Close()
+		delete(r.listenersByAddress, addr)
 	}
 
-	listener.Close()
-
-	delete(r.listenersByClientID, clientID)
-	delete(r.listenersByAddress, listener.Address())
-
+	delete(r.addressesByClientID, clientID)
 }
