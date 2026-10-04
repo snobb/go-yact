@@ -30,20 +30,41 @@ const (
 // Generate creates a CA, server, and client certificate in certDir.
 // The CA private key is never written to disk.
 func Generate(certDir string, domains []string, ipAddrs []net.IP, nClients int) error {
-	if err := os.MkdirAll(certDir, 0o755); err != nil {
-		return fmt.Errorf("creating cert directory: %w", err)
-	}
-
 	caKey, caCert, caCertDER, err := generateCA()
 	if err != nil {
 		return fmt.Errorf("generating CA: %w", err)
 	}
 
-	if err := writePEM(filepath.Join(certDir, CACertFile), "CERTIFICATE", caCertDER, 0o644); err != nil {
+	if err := generateServer(certDir, caCert, caKey, caCertDER, domains, ipAddrs); err != nil {
+		return fmt.Errorf("generating server: %w", err)
+	}
+
+	if err := generateClients(certDir, caCert, caKey, caCertDER, nClients); err != nil {
+		return fmt.Errorf("generating clients: %w", err)
+	}
+
+	return nil
+}
+
+func generateServer(
+	certDir string,
+	caCert *x509.Certificate,
+	caKey ed25519.PrivateKey,
+	caCertDER []byte,
+	domains []string,
+	ipAddrs []net.IP,
+) error {
+	serverDir := filepath.Join(certDir, "server")
+
+	if err := os.MkdirAll(serverDir, 0o755); err != nil {
+		return fmt.Errorf("creating cert directory: %w", err)
+	}
+
+	if err := writePEM(filepath.Join(serverDir, CACertFile), "CERTIFICATE", caCertDER, 0o644); err != nil {
 		return fmt.Errorf("writing CA cert: %w", err)
 	}
 
-	if err := generateCert(certDir, caKey, caCert, "server",
+	if err := generateCert(serverDir, caKey, caCert, "server",
 		x509.ExtKeyUsageServerAuth,
 		"server",
 		domains,
@@ -52,9 +73,29 @@ func Generate(certDir string, domains []string, ipAddrs []net.IP, nClients int) 
 		return fmt.Errorf("generating server cert: %w", err)
 	}
 
+	return nil
+}
+
+func generateClients(
+	certDir string,
+	caCert *x509.Certificate,
+	caKey ed25519.PrivateKey,
+	caCertDER []byte,
+	nClients int,
+) error {
 	for i := range nClients {
-		if err := generateCert(certDir, caKey, caCert,
-			fmt.Sprintf("client%d", i+1),
+		clientDir := filepath.Join(certDir, fmt.Sprintf("client%d", i+1))
+
+		if err := os.MkdirAll(clientDir, 0o755); err != nil {
+			return fmt.Errorf("creating cert directory: %w", err)
+		}
+
+		if err := writePEM(filepath.Join(clientDir, CACertFile), "CERTIFICATE", caCertDER, 0o644); err != nil {
+			return fmt.Errorf("writing CA cert: %w", err)
+		}
+
+		if err := generateCert(clientDir, caKey, caCert,
+			"client",
 			x509.ExtKeyUsageClientAuth,
 			"client",
 			nil, // explicitly empty for client cert DNS names.

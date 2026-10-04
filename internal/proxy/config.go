@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"fmt"
+	"path/filepath"
 	"time"
 
 	"github.com/snobb/go-yact/internal/config"
@@ -10,7 +11,7 @@ import (
 // Default values for grpc server.
 const (
 	DefaultKeepAliveInterval = 1 * time.Minute
-	DefaultKeepAliveTimeout  = 20 * time.Second
+	DefaultKeepAliveTimeout  = 5 * time.Minute
 )
 
 // Config is a proxy server configuration.
@@ -39,8 +40,10 @@ func (c Config) Validate() error {
 func (c *Config) SetDefaults() {
 	c.TLS.SetDefaults()
 
+	c.TLS.CertDir = filepath.Join(c.TLS.CertDir, "server")
+
 	if c.ProxyAddr == "" {
-		c.ProxyAddr = ":8008"
+		c.ProxyAddr = "0.0.0.0:8001"
 	}
 
 	if c.KeepAliveInterval == 0 {

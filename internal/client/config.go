@@ -2,6 +2,7 @@ package client
 
 import (
 	"fmt"
+	"path/filepath"
 	"time"
 
 	"github.com/snobb/go-yact/internal/config"
@@ -9,13 +10,13 @@ import (
 
 // Default values for grpc client.
 const (
-	DefaultKeepAliveInterval = 20 * time.Second
-	DefaultKeepAliveTimeout  = 5 * time.Second
+	DefaultKeepAliveInterval = 1 * time.Minute
+	DefaultKeepAliveTimeout  = 5 * time.Minute
 )
 
 type BindAddress struct {
-	BindAddress string
-	LocalPort   int
+	BindAddress string `envconfig:"bind_address" yaml:"bind_address"`
+	LocalPort   int    `envconfig:"local_port" yaml:"local_port"`
 }
 
 // Config is a client configuration.
@@ -45,8 +46,10 @@ func (c Config) Validate() error {
 func (c *Config) SetDefaults() {
 	c.TLS.SetDefaults()
 
+	c.TLS.CertDir = filepath.Join(c.TLS.CertDir, "client1")
+
 	if c.ProxyAddr == "" {
-		c.ProxyAddr = ":8008"
+		c.ProxyAddr = "0.0.0.0:8001"
 	}
 
 	if len(c.ToAddrs) == 0 {

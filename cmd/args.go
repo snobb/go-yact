@@ -90,11 +90,11 @@ func handleProxy(logger logger.Logger, configPath string, args []string) (Action
 	fs := pflag.NewFlagSet("proxy", pflag.ContinueOnError)
 
 	cfg := proxy.Config{}
+	cfg.SetDefaults()
 
 	if err := config.Load(configPath, &cfg); err != nil {
 		return nil, err
 	}
-	cfg.SetDefaults()
 
 	fs.StringVarP(&cfg.TLS.CertDir, "cert-dir", "R", cfg.TLS.CertDir, "certificate directory")
 	fs.StringVarP(&cfg.ProxyAddr, "address", "a", cfg.ProxyAddr, "address to listen on")
@@ -112,14 +112,12 @@ func handleProxy(logger logger.Logger, configPath string, args []string) (Action
 		return nil, err
 	}
 
-	logger.Debug("config", "config", cfg)
-
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
 
 	return Action(func(ctx context.Context) error {
-		logger.DebugContext(ctx, "config", "config", cfg)
+		logger.DebugContext(ctx, " starting proxy with config", "config", cfg)
 		return proxy.Run(ctx, logger, &cfg)
 	}), nil
 }
@@ -128,12 +126,11 @@ func handleClient(logger logger.Logger, configPath string, args []string) (Actio
 	fs := pflag.NewFlagSet("client", pflag.ContinueOnError)
 
 	cfg := client.Config{}
+	cfg.SetDefaults()
 
 	if err := config.Load(configPath, &cfg); err != nil {
 		return nil, err
 	}
-
-	cfg.SetDefaults()
 
 	var bindAddrs []string
 
@@ -158,10 +155,13 @@ func handleClient(logger logger.Logger, configPath string, args []string) (Actio
 	if err != nil {
 		return nil, err
 	}
-	cfg.ToAddrs = addrs
+
+	if len(addrs) > 0 {
+		cfg.ToAddrs = addrs
+	}
 
 	return Action(func(ctx context.Context) error {
-		logger.DebugContext(ctx, "config", "config", cfg)
+		logger.DebugContext(ctx, "starting client with config", "config", cfg)
 		return client.Run(ctx, logger, &cfg)
 	}), nil
 }
@@ -197,7 +197,7 @@ func handleMakeCerts(args []string) (Action, error) {
 		return nil, err
 	}
 
-	fmt.Println("Generating certificates in", certDir)
+	fmt.Println("Generating server and client certificates in", certDir)
 	fmt.Println("  Domains:", strings.Join(domains, ", "))
 	fmt.Println("  IP addresses:", strings.Join(IPAddrStr, ", "))
 	fmt.Println("  Number of clients:", nClients)
@@ -218,12 +218,10 @@ func initLogger(debug bool) logger.Logger {
 
 func parseBindAddresses(addrs []string) ([]client.BindAddress, error) {
 	if len(addrs) == 0 {
-		return []client.BindAddress{
-			{BindAddress: ":8443", LocalPort: 8443},
-		}, nil
+		return nil, nil
 	}
 
-	var bindAddrs []client.BindAddress
+	bindAddrs := make([]client.BindAddress, 0, len(addrs))
 
 	for _, addr := range addrs {
 		bindAddr, err := parseBindAddress(addr)
@@ -254,6 +252,10 @@ func parseBindAddress(bindAddr string) (client.BindAddress, error) {
 }
 
 func parseIPs(ips []string) ([]net.IP, error) {
+	if len(ips) == 0 {
+		return nil, nil
+	}
+
 	var parsedIPs []net.IP
 	for _, ip := range ips {
 		parsedIP := net.ParseIP(ip)

@@ -1,3 +1,1 @@
-tls_config:
-  cert_dir: ./config/certs
-proxy_addr: "localhost:8008"
+proxy_addr: "localhost:8001"
