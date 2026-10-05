@@ -3,7 +3,8 @@ PROTO_DIR := api/proto
 GRPC_OUT_DIR := pkg/protos/gen
 
 BIN_DIR := bin
-TARGET := ${BIN_DIR}/yact
+TARGET  := ${BIN_DIR}/yact
+ARCH    ?= ${shell uname -m | sed 's/x86_64/amd64/'}
 
 ##@ General
 
@@ -62,8 +63,12 @@ lint-go: ## Lint go
 
 ##@ Build
 .PHONY: build
-build: ## Build yact
+build: ## Build yact for current os/arch
 	go build -o ${TARGET} ./cmd/
+
+.PHONY: build-linux
+build-linux: clean ## Build linux binary of yact
+	CGO_ENABLED=0 GOOS=linux GOARCH=${ARCH} go build -o ${TARGET} ./cmd
 
 ##@ Test
 .PHONY: test
