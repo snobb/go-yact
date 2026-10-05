@@ -50,7 +50,7 @@ func parseArgs() (Action, error) {
 
 	pflag.BoolVarP(&help, "help", "h", false, "show help")
 	pflag.BoolVarP(&debug, "debug", "d", false, "debug output")
-	pflag.StringVarP(&configPath, "config", "c", config.ConfigFileName, "config file")
+	pflag.StringVarP(&configPath, "config", "c", config.ConfigPath(), "config file")
 
 	pflag.Parse()
 

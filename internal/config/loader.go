@@ -3,13 +3,14 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/kelseyhightower/envconfig"
 	"go.yaml.in/yaml/v2"
 )
 
 const (
-	ConfigFileName = "yactrc.yaml"
+	ConfigFileName = "config.yml"
 	EnvVarPrefix   = "YACT"
 )
 
@@ -49,4 +50,9 @@ func loadFile[T Configer](fileName string, cfg T) error {
 	}
 
 	return yamlUnmarshalFunc(data, cfg)
+}
+
+func ConfigPath() string {
+	homeDir, _ := os.UserHomeDir()
+	return filepath.Join(homeDir, ".config/yact", ConfigFileName)
 }

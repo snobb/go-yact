@@ -68,7 +68,7 @@ build: ## Build yact for current os/arch
 
 .PHONY: build-linux
 build-linux: clean ## Build linux binary of yact
-	CGO_ENABLED=0 GOOS=linux GOARCH=${ARCH} go build -o ${TARGET} ./cmd
+	CGO_ENABLED=0 GOOS=linux GOARCH=${ARCH} go build -o ${TARGET}_linux_${ARCH} ./cmd
 
 ##@ Test
 .PHONY: test
