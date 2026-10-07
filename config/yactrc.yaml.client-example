@@ -1,4 +1,8 @@
 tls_config:
-  cert_dir: ./config/certs
-proxy_addr: ":8008"
-to_addr: ":443"
+  cert_dir: "/home/snobb/.config/yact/certs/client1/"
+proxy_addr: "localhost:8001"
+to_addrs:
+- bind_address: ":11443"
+  local_port: 1443
+- bind_address: ":12443"
+  local_port: 2443
