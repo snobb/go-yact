@@ -1,8 +1,21 @@
+# Sample client configuration.
+# Use with: ./bin/yact -c <file> client
+
 tls_config:
-  cert_dir: "/home/snobb/.config/yact/certs/client1/"
+  # Directory containing ca.crt, client.crt and client.key. The value is used as-is,
+  # so point it at a "clientN" directory created by make-certs.
+  cert_dir: ./config/certs/client1
+
+# Address of the proxy server's gRPC control port.
 proxy_addr: "localhost:8001"
+
+# Each entry listens on bind_address on the server and forwards traffic to local_port
+# on the machine running the client.
 to_addrs:
 - bind_address: ":11443"
   local_port: 1443
 - bind_address: ":12443"
   local_port: 2443
+
+keep_alive_interval: 1m
+keep_alive_timeout: 5m

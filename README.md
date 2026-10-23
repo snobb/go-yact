@@ -1,5 +1,109 @@
 # go-yact (yet another connection tunnel)
 
+## Quick Start
+
+### 1. Build
+
+```sh
+make build    # produces ./bin/yact
+```
+
+### 2. Generate mTLS certificates
+
+```sh
+make create-certs
+# equivalent to:
+# ./bin/yact make-certs --cert-dir ./config/certs
+```
+
+This creates a CA plus a server and a client certificate:
+
+```
+config/certs/
+├── server/    ca.crt  server.crt  server.key
+└── client1/   ca.crt  client.crt  client.key
+```
+
+Use `-n <count>` to generate more than one client certificate (e.g.
+`./bin/yact make-certs --cert-dir ./config/certs -n 3`). If the server is reached over a
+name or IP other than `localhost`, include it so the certificate is valid for that
+endpoint:
+
+```sh
+./bin/yact make-certs --cert-dir ./config/certs \
+  --domain tunnel.example.com --ip-address 203.0.113.10
+```
+
+### 3. Start the server (proxy)
+
+`--cert-dir` is used as-is, so point it at the server certificate directory:
+
+```sh
+./bin/yact proxy --cert-dir ./config/certs/server --address :8001
+```
+
+Omit `--cert-dir` to use the default `~/.config/yact/certs/server`.
+
+### 4. Start the client (tunnel)
+
+Point the client at its own certificate directory and at the server's control port:
+
+```sh
+./bin/yact client --cert-dir ./config/certs/client1 --address <server-host>:8001 \
+  -L :8080:3000
+```
+
+Omit `--cert-dir` to use the default `~/.config/yact/certs/client1`.
+
+`-L` takes `bind_host:bind_port:local_port`:
+
+- `:8080` — address/port the **server** listens on for external users
+- `3000` — the **local** port on the client machine that traffic is forwarded to
+
+So in this example, connecting to `<server-host>:8080` reaches `localhost:3000` on the
+client. Repeat `-L` to expose multiple services:
+
+```sh
+./bin/yact client --cert-dir ./config/certs/client1 --address <server-host>:8001 \
+  -L :8080:3000 \
+  -L 127.0.0.1:8443:443
+```
+
+### Using config files
+
+Both commands accept a config file. The `--config`/`-c` flag is a global flag, so it must
+come **before** the subcommand:
+
+```sh
+./bin/yact -c server.yaml proxy
+./bin/yact -c client.yaml client
+```
+
+In a config file `cert_dir` is used as-is (no `server`/`client1` suffix is added), so it
+must point at the directory holding that role's `ca.crt`, `server.crt`/`client.crt` and
+key. For example:
+
+```yaml
+# server.yaml
+tls_config:
+  cert_dir: ./config/certs/server
+proxy_addr: ":8001"
+```
+
+```yaml
+# client.yaml
+tls_config:
+  cert_dir: ./config/certs/client1
+proxy_addr: "<server-host>:8001"
+to_addrs:
+  - bind_address: ":8080"
+    local_port: 3000
+```
+
+Values from flags override the config file, which overrides the defaults. See
+`config/yactrc.yaml.server-example` and `config/yactrc.yaml.client-example` for all
+available options.
+
 ## Architecture Proposal
 
 There is an control port at 8001. To initialise, the client sends a "Hello" message to the server on
