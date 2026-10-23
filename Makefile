@@ -28,8 +28,8 @@ clean: clean-certs ## Clean everything
 
 .PHONY: run-server
 run-server: ## Run the server
-	go run ./cmd/server \
-		-cert-dir ./config/certs
+	go run ./cmd proxy \
+		--cert-dir ./config/certs/server
 
 ##@ Development
 
@@ -82,7 +82,7 @@ test-integration: create-certs build ## Run integration tests
 
 .PHONY: create-certs
 create-certs: ## Create mTLS certs
-	go run ./cmd/ make-certs -cert-dir ./config/certs
+	go run ./cmd/ make-certs --cert-dir ./config/certs
 
 clean-certs: ## Clean certs
 	-rm -rf ./config/certs
