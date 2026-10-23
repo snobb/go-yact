@@ -10,6 +10,7 @@ import (
 )
 
 const (
+	// EventBufferSize is the size of the event channel buffer.
 	EventBufferSize = 1024
 )
 
@@ -32,7 +33,7 @@ type ProxyListener struct {
 }
 
 // NewListener returns a new ProxyListener.
-func NewListener(ctx context.Context, address, ownerID string) *ProxyListener {
+func NewListener(_ context.Context, address, ownerID string) *ProxyListener {
 	return &ProxyListener{
 		OwnerClientID: ownerID,
 		address:       address,
@@ -65,12 +66,14 @@ func (l *ProxyListener) Listen(ctx context.Context, onNewConn OnNewConnectionFun
 	return nil
 }
 
+// Close stops the listener.
 func (l *ProxyListener) Close() {
 	if l.cancelFunc != nil {
 		l.cancelFunc()
 	}
 }
 
+// EventChannel returns the event channel for the listener.
 func (l *ProxyListener) EventChannel() <-chan *pb.NewConnectionEvent {
 	return l.eventChan
 }

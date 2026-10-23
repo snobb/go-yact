@@ -4,6 +4,7 @@ import "context"
 
 //go:generate moq -rm -fmt goimports -out logger_mock.go . Logger
 
+// Logger is a logger interface.
 type Logger interface {
 	// Info logs at [LevelInfo].
 	Info(msg string, args ...any)

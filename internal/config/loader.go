@@ -52,6 +52,7 @@ func loadFile[T Configer](fileName string, cfg T) error {
 	return yamlUnmarshalFunc(data, cfg)
 }
 
+// ConfigPath returns the path to the config file.
 func ConfigPath() string {
 	homeDir, _ := os.UserHomeDir()
 	return filepath.Join(homeDir, ".config/yact", ConfigFileName)

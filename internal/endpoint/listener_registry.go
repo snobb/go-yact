@@ -52,7 +52,7 @@ func (r *ListenerRegistry) Register(ctx context.Context, address, ownerID string
 	return nil
 }
 
-// GetListener returns a listener from the registry.
+// GetListenerByAddress returns a listener from the registry.
 func (r *ListenerRegistry) GetListenerByAddress(address string) (*ProxyListener, error) {
 	r.listenerMU.RLock()
 	defer r.listenerMU.RUnlock()
@@ -64,6 +64,7 @@ func (r *ListenerRegistry) GetListenerByAddress(address string) (*ProxyListener,
 	return listener, nil
 }
 
+// RemoveListenerByClientID removes a listener from the registry.
 func (r *ListenerRegistry) RemoveListenerByClientID(clientID string) {
 	r.listenerMU.Lock()
 	defer r.listenerMU.Unlock()

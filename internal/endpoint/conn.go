@@ -1,3 +1,4 @@
+// Package endpoint provides server endpoint functionality.
 package endpoint
 
 import (
@@ -6,8 +7,10 @@ import (
 	"sync"
 )
 
+// ErrConnectionNotFound is returned when a connection is not found in the registry.
 var ErrConnectionNotFound = errors.New("connection not found")
 
+// ProxyConn represents a connection on the proxy server.
 type ProxyConn struct {
 	ID            string
 	OwnerClientID string
@@ -15,18 +18,20 @@ type ProxyConn struct {
 	Conn net.Conn
 }
 
+// ConnRegistry represents a collection of connections on the proxy server.
 type ConnRegistry struct {
 	mu    sync.Mutex
 	conns map[string]*ProxyConn
 }
 
-// NewRegistry creates a new Registry.
+// NewConnRegistry creates a new ConnRegistry.
 func NewConnRegistry() *ConnRegistry {
 	return &ConnRegistry{
 		conns: make(map[string]*ProxyConn),
 	}
 }
 
+// AddConn adds a connection to the registry.
 func (r *ConnRegistry) AddConn(conn net.Conn, connectionID, ownerID string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

@@ -16,13 +16,13 @@ import (
 	pb "github.com/snobb/go-yact/pkg/protos/gen/tunnel/v1"
 )
 
+// Client represents a client.
 type Client struct {
-	logger  logger.Logger
-	address string
-
+	logger     logger.Logger
 	grpcClient pb.TunnelServiceClient
 }
 
+// NewClient returns a new Client.
 func NewClient(logger logger.Logger, grpcClient pb.TunnelServiceClient) *Client {
 	return &Client{
 		logger:     logger,
@@ -30,6 +30,7 @@ func NewClient(logger logger.Logger, grpcClient pb.TunnelServiceClient) *Client 
 	}
 }
 
+// Run starts the client.
 func (c *Client) Run(ctx context.Context, bindAddress string, localPort int) error {
 	logCtx := logger.WithAttrs(ctx,
 		slog.String("entity", "client"))
@@ -81,7 +82,7 @@ func (c *Client) handleConnectionEvent(ctx context.Context, localPort int, event
 	cancelCtx, cancel := context.WithCancel(logCtx)
 	defer cancel()
 
-	conn, err := makeLocalConn(localPort)
+	conn, err := makeLocalConn(cancelCtx, localPort)
 	if err != nil {
 		c.logger.ErrorContext(logCtx, "failed to create local connection", "error", err)
 		return
@@ -210,6 +211,7 @@ func (c *Client) sendPackets(
 	}
 }
 
-func makeLocalConn(port int) (net.Conn, error) {
-	return net.Dial("tcp", fmt.Sprintf("localhost:%d", port))
+func makeLocalConn(ctx context.Context, port int) (net.Conn, error) {
+	var dialer net.Dialer
+	return dialer.DialContext(ctx, "tcp", fmt.Sprintf("localhost:%d", port))
 }
