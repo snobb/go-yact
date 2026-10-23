@@ -14,6 +14,7 @@ const (
 	DefaultKeepAliveTimeout  = 5 * time.Minute
 )
 
+// BindAddress represents a bind address for the client.
 type BindAddress struct {
 	BindAddress string `envconfig:"bind_address" yaml:"bind_address"`
 	LocalPort   int    `envconfig:"local_port" yaml:"local_port"`
@@ -65,6 +66,7 @@ func (c *Config) SetDefaults() {
 	}
 }
 
+// BindAddresses returns the bind addresses for the client.
 func (c Config) BindAddresses() []string {
 	addrs := make([]string, 0, len(c.ToAddrs))
 	for _, addr := range c.ToAddrs {
