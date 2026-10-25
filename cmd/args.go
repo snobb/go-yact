@@ -23,7 +23,7 @@ type Action func(ctx context.Context) error
 
 var command string
 
-func parseArgs() (Action, error) {
+func parseArgs(versionStr string) (Action, error) {
 	command = os.Args[0]
 
 	// disable interspersed flags to let sub-flagsets get options from pflag.
@@ -44,15 +44,23 @@ func parseArgs() (Action, error) {
 
 	var (
 		help       bool
+		version    bool
 		debug      bool
 		configPath string
 	)
 
+	pflag.BoolVarP(&version, "version", "v", false,
+		fmt.Sprintf("show version [%s]", versionStr))
 	pflag.BoolVarP(&help, "help", "h", false, "show help")
 	pflag.BoolVarP(&debug, "debug", "d", false, "debug output")
 	pflag.StringVarP(&configPath, "config", "c", config.ConfigPath(), "config file")
 
 	pflag.Parse()
+
+	if version {
+		fmt.Printf("version: %s\n", versionStr)
+		return nil, nil
+	}
 
 	remaining := pflag.Args()
 	if len(remaining) == 0 {

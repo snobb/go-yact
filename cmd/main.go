@@ -12,6 +12,8 @@ import (
 	"github.com/spf13/pflag"
 )
 
+var version string
+
 func main() {
 	if err := run(); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %s\n", err.Error())
@@ -20,7 +22,7 @@ func main() {
 }
 
 func run() error {
-	action, err := parseArgs()
+	action, err := parseArgs(version)
 	if err != nil {
 		if errors.Is(err, pflag.ErrHelp) {
 			return nil

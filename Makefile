@@ -6,6 +6,12 @@ BIN_DIR := bin
 TARGET  := ${BIN_DIR}/yact
 ARCH    ?= ${shell uname -m | sed 's/x86_64/amd64/'}
 
+BRANCH   := ${shell git rev-parse --abbrev-ref HEAD}
+REVCNT   := ${shell git rev-list --count $(BRANCH)}
+REVHASH  := ${shell git log -1 --format="%h"}
+LDFLAGS  := -X main.version=${BRANCH}.${REVCNT}.${REVHASH} -s
+CFLAGS   := --ldflags '${LDFLAGS}'
+
 ##@ General
 
 .PHONY: help
@@ -64,11 +70,11 @@ lint-go: ## Lint go
 ##@ Build
 .PHONY: build
 build: ## Build yact for current os/arch
-	go build -o ${TARGET} ./cmd/
+	go build ${CFLAGS} -o ${TARGET} ./cmd/
 
-.PHONY: build-linux
-build-linux: clean ## Build linux binary of yact
-	CGO_ENABLED=0 GOOS=linux GOARCH=${ARCH} go build -o ${TARGET}_linux_${ARCH} ./cmd
+.PHONY: build/linux
+build/linux: clean ## Build linux binary of yact
+	CGO_ENABLED=0 GOOS=linux GOARCH=${ARCH} go build ${CFLAGS} -o ${TARGET}_linux_${ARCH} ./cmd
 
 ##@ Test
 .PHONY: test
