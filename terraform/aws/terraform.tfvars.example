@@ -1,0 +1,32 @@
+deployment_name = "deployment-name"
+aws_region      = "eu-west-2"
+aws_profile     = "your-profile-name"
+
+# Keep instance_type architecture-compatible with yact_architecture.
+instance_type = "t4g.nano"
+
+# base domain name to create the dns zone at. Eg. full instance FQDN will be
+# <dns_record_name>.<dns_domain_name>.
+dns_record_name = "my-deployment"
+dns_domain_name = "my.domain.name"
+
+# Path to your SSH public key to use for the instance.
+ssh_public_key_path = "~/.ssh/id_ed25519.pub"
+
+# Restrict SSH and the yact control port to your laptop's public IP.
+laptop_cidr_blocks = ["1.2.3.4/32"]
+
+# Tags to include with every cloud object.
+tags = {
+  creator = "myname@email.address"
+}
+
+## Yact options
+yact_architecture      = "arm64"
+yact_linux_binary_path = "../bin/yact_linux_arm64"
+
+# Optional extra IP SANs for the generated server certificate.
+yact_cert_ip_addresses = []
+
+# Optional list of inbound tunnels to allow build tunnels for (default:[443])
+public_service_ports = [443]

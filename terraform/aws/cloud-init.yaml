@@ -1,0 +1,58 @@
+#cloud-config
+# Build marker: the sha256 of the yact linux binary uploaded by Terraform.
+# It is never consumed by cloud-init; its only purpose is to make the rendered
+# user data change when a new binary is built, so that
+# user_data_replace_on_change replaces the instance and the upload provisioner
+# ships the new binary.
+# yact_binary_sha256: ${yact_binary_sha256}
+
+write_files:
+  - path: ${yact_config_path}
+    permissions: "0640"
+    owner: root:root
+    content: |
+      proxy_addr: "${yact_proxy_addr}"
+      tls_config:
+        cert_dir: ${yact_server_cert_dir}
+  - path: ${yact_service_path}
+    permissions: "0644"
+    owner: root:root
+    content: |
+      [Unit]
+      Description=yact proxy
+      After=network-online.target
+      Wants=network-online.target
+
+      [Service]
+      Type=simple
+       ExecStart=${yact_bin_dir}/yact -c ${yact_config_path} proxy
+      Restart=always
+      RestartSec=5
+      # Logging goes to the journal, so no log directory is needed. Follow it
+      # with: journalctl -u ${yact_service_name} -f
+      StandardOutput=journal
+      StandardError=journal
+      SyslogIdentifier=${yact_service_name}
+      # Runs as root so it can bind ports below 1024 without a file
+      # capability on the binary. Hardening below does not rely on
+      # ambient capabilities, which have no effect for uid 0.
+      NoNewPrivileges=true
+      ProtectSystem=strict
+      ProtectHome=true
+      PrivateTmp=true
+      # Only the certificate directory needs to be writable.
+      ReadWritePaths=${yact_cert_dir}
+      WorkingDirectory=${yact_cert_dir}
+
+      [Install]
+      WantedBy=multi-user.target
+runcmd:
+  - |
+      set -eu
+      install -d -m 0755 ${yact_bin_dir}
+      install -d -m 0750 -o root -g root ${yact_cert_dir}/server
+      # Enable so yact starts on every boot. It is not started here: the
+      # binary and certificates are uploaded after the instance boots, so
+      # Terraform starts the unit once the upload completes.
+      systemctl daemon-reload
+      systemctl enable ${yact_service_name}
