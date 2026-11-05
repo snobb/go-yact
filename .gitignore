@@ -9,6 +9,10 @@
 *.dylib
 /bin
 
+# notes
+review*.md
+research*.md
+
 # Test binary, built with `go test -c`
 *.test
 
